@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.ui.theme.LifeDotsTheme
 import com.example.lifedots.wallpaper.LifeDotsWallpaperService
 import java.util.Calendar
@@ -65,6 +66,11 @@ import java.util.Calendar
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Touch the prefs singleton on every launch so the rebrand migration
+        // runs the moment a user opens the app — not only when the wallpaper
+        // engine happens to start. Critical for users upgrading from upstream
+        // LifeDots where view_mode=CONTINUOUS was persisted.
+        LifeDotsPreferences.getInstance(this)
         enableEdgeToEdge()
         setContent {
             LifeDotsTheme {

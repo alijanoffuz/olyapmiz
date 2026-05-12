@@ -231,11 +231,36 @@ class LifeDotsPreferences(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()
 
+    init {
+        runMigrationsIfNeeded()
+    }
+
     private val _settingsFlow = MutableStateFlow(loadSettings())
     val settingsFlow: StateFlow<WallpaperSettings> = _settingsFlow.asStateFlow()
 
     val settings: WallpaperSettings
         get() = _settingsFlow.value
+
+    /**
+     * One-time rebrand migrations for users upgrading from the upstream LifeDots
+     * fork (or any earlier build before the O'lyapmiz rebrand). These migrations
+     * fix the "old continuous-grid view sticks around on Samsung A11" symptom:
+     * the upstream default was CONTINUOUS, so users who installed it previously
+     * have view_mode=CONTINUOUS persisted in their SharedPreferences. Without
+     * this migration, our new CALENDAR default never wins.
+     */
+    private fun runMigrationsIfNeeded() {
+        val stored = prefs.getInt(KEY_MIGRATION_VERSION, 0)
+        if (stored >= CURRENT_MIGRATION_VERSION) return
+        val editor = prefs.edit()
+        if (stored < 1) {
+            // v1: reset view mode + theme to the O'lyapmiz defaults so anyone
+            // upgrading from the upstream fork sees the calendar view instead
+            // of the legacy 365-dot continuous grid.
+            editor.remove(KEY_VIEW_MODE)
+        }
+        editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
+    }
 
     private fun loadSettings(): WallpaperSettings {
         val customColors = CustomColors(
@@ -781,6 +806,14 @@ class LifeDotsPreferences(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "lifedots_prefs"
+
+        // Schema migration version. Bump and add a branch in runMigrationsIfNeeded()
+        // whenever defaults change in a way that needs to override existing
+        // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
+        // O'lyapmiz default CALENDAR).
+        private const val KEY_MIGRATION_VERSION = "migration_version"
+        private const val CURRENT_MIGRATION_VERSION = 1
+
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
         private const val KEY_DOT_SHAPE = "dot_shape"
