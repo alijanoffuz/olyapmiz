@@ -14,6 +14,17 @@
          service survives Samsung Freecess / Xiaomi MIUI kill-on-background. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- POST_NOTIFICATIONS (Android 13+): without this the user can't even toggle
+         notifications on in Samsung settings, which leaves the foreground-service
+         notification (below) silently suppressed. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A foreground service holding a min-priority notification is the only
+         supported way to opt OUT of Samsung Freecess + Android doze restrictions
+         on the wallpaper engine's process. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -56,6 +67,18 @@
             <meta-data
                 android:name="android.service.wallpaper"
                 android:resource="@xml/wallpaper" />
+        </service>
+
+        <!-- Foreground keep-alive service — pins the wallpaper engine's process
+             in foreground state so Samsung Freecess / MIUI MemoryGuard / stock
+             Android Doze don't freeze it. -->
+        <service
+            android:name=".service.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="keep_wallpaper_engine_alive" />
         </service>
 
         <!-- Date Change Receiver -->

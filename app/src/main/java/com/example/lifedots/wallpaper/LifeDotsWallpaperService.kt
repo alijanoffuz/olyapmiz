@@ -26,6 +26,7 @@ import android.renderscript.ScriptIntrinsicBlur
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 import com.example.lifedots.receiver.DateChangeReceiver
+import com.example.lifedots.service.KeepAliveService
 import com.example.lifedots.preferences.AnimationSettings
 import com.example.lifedots.preferences.AnimationType
 import com.example.lifedots.preferences.BackgroundSettings
@@ -155,6 +156,9 @@ class LifeDotsWallpaperService : WallpaperService() {
             // Schedule the daily refresh alarm the first time the wallpaper runs, so
             // users don't have to wait for a reboot for the safety net to arm.
             DateChangeReceiver.scheduleDailyAlarm(applicationContext)
+            // Anchor our process in the foreground so Samsung Freecess can't freeze
+            // it while the wallpaper is hidden behind the lock screen.
+            KeepAliveService.start(applicationContext)
         }
 
         override fun onDestroy() {
