@@ -135,9 +135,11 @@ fun OnboardingScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // App logo
+        // App logo — point at the bitmap drawable directly, NOT @mipmap/ic_launcher.
+        // On API 26+ ic_launcher resolves to <adaptive-icon> XML which Compose's
+        // painterResource cannot load, throwing IllegalArgumentException.
         Image(
-            painter = painterResource(id = R.mipmap.ic_launcher),
+            painter = painterResource(id = R.drawable.ic_launcher_logo),
             contentDescription = stringResource(R.string.app_name),
             contentScale = ContentScale.Fit,
             modifier = Modifier.size(180.dp)
