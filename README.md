@@ -9,9 +9,11 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 </p>
 
 <p align="center">
-  <a href="https://github.com/alijanoffuz/olyapmiz/raw/master/releases/olyapmiz.apk">
+  <a href="https://github.com/alijanoffuz/olyapmiz/releases/latest">
     <img src="https://img.shields.io/badge/Download_APK-yellow?style=for-the-badge&logo=android&logoColor=black&labelColor=000000&color=FFD400" alt="Download APK" height="36"/>
   </a>
+  <br/>
+  <sub>Once installed, the app auto-checks for updates on launch and offers to install new versions.</sub>
 </p>
 
 > *O'lyapmiz* (Uzbek): "we are dying." A reminder that life is finite — and that this is what makes today worth showing up for.
@@ -36,9 +38,11 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 
 ### From a release APK
 
-1. Grab the latest [`olyapmiz.apk`](releases/olyapmiz.apk) from the `releases/` folder (or use the Download button at the top of this page).
+1. Grab the latest APK from [Releases](https://github.com/alijanoffuz/olyapmiz/releases/latest) (or use the Download button at the top of this page).
 2. Install on your Android phone (Settings → Apps → Special access → Install unknown apps; allow your file manager).
 3. Open **O'lyapmiz** → tap **Set as Wallpaper** → confirm in the system live-wallpaper preview.
+
+After the first install, the app auto-checks GitHub for new releases on every launch and shows an **Install now** card when there's an update. You can also tap **Check for updates** at the bottom of the home screen at any time.
 
 ### Build from source
 
