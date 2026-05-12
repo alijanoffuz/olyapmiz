@@ -63,19 +63,19 @@ It is designed to work on **Samsung One UI** and **Xiaomi/Redmi MIUI** — the t
 
 ### Recommended phone settings
 
-These are one-time tweaks that make the daily auto-update bulletproof on Samsung and Redmi.
+The app shows a **"Keep wallpaper always running"** card on the home screen until the right settings are granted — tap the buttons there for a one-tap shortcut. The same settings can be reached manually:
 
 **Samsung (One UI)**
-- Settings → Battery → Background usage limits → **Never sleeping apps** → add O'lyapmiz.
-- Settings → Apps → O'lyapmiz → Battery → **Unrestricted**.
+- *In-app shortcut:* tap **1. Allow background activity** → **Allow**, then **2. Add to 'Never sleeping apps'** → toggle O'lyapmiz on.
+- *Manually:* Settings → Battery → Background usage limits → **Never sleeping apps** → add O'lyapmiz, AND Settings → Apps → O'lyapmiz → Battery → **Unrestricted**.
 - When you tap *Set as Wallpaper*, choose **Home and lock screens** so the calendar shows in both places.
 
 **Xiaomi / Redmi (MIUI / HyperOS)**
-- Settings → Apps → Manage apps → O'lyapmiz → **Autostart: ON**.
-- Settings → Apps → Manage apps → O'lyapmiz → Battery saver → **No restrictions**.
+- *In-app shortcut:* tap **Allow background activity** → **Allow**.
+- *Manually:* Settings → Apps → Manage apps → O'lyapmiz → **Autostart: ON** AND Battery saver → **No restrictions**.
 - Settings → Wallpaper → My wallpapers → Live wallpapers → pick O'lyapmiz (or use the in-app *Set as Wallpaper* button).
 
-Without these, the wallpaper still updates **the moment you wake the phone after midnight** (via the visibility-change path), but the in-place midnight refresh may be skipped while the device is in deep doze.
+Without these, the wallpaper still updates **the moment you wake the phone after midnight** (via the visibility-change path), but Samsung's Freecess / MIUI's MemoryGuard can freeze the wallpaper process during the day, and the in-place midnight refresh may be skipped while the device is in deep doze.
 
 ---
 

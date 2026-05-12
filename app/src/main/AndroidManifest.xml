@@ -10,6 +10,10 @@
     <!-- Re-arm the daily refresh alarm after device reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Ask the user to exempt the app from battery optimization so the wallpaper
+         service survives Samsung Freecess / Xiaomi MIUI kill-on-background. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
