@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -283,10 +285,11 @@ fun OnboardingScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
         // App logo — point at the bitmap drawable directly, NOT @mipmap/ic_launcher.
         // On API 26+ ic_launcher resolves to <adaptive-icon> XML which Compose's
         // painterResource cannot load, throwing IllegalArgumentException.
@@ -344,12 +347,14 @@ fun OnboardingScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // "Keep Always Running" — only shown while the app is still being killed
-        // by Samsung Freecess / stock Android Doze. Once the user grants the
-        // battery-optimization exemption, this card hides itself.
-        if (batteryOptimized || isSamsung) {
+        // "Keep Always Running" — hides itself the moment the user grants the
+        // battery-optimization exemption (the primary, OS-enforced layer of
+        // protection). Samsung's "Never sleeping apps" is a nice-to-have but
+        // there's no API to detect whether it's been configured, so we don't
+        // nag about it forever — the README still documents the manual step.
+        if (batteryOptimized) {
             KeepAlwaysRunningCard(
-                showBatteryButton = batteryOptimized,
+                showBatteryButton = true,
                 showSamsungButton = isSamsung,
                 onAllowBackground = onAllowBackground,
                 onOpenSamsungNeverSleeping = onOpenSamsungNeverSleeping
@@ -403,11 +408,17 @@ fun OnboardingScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        TextButton(
+        // "Check for updates" — visible on the first screen as a proper button
+        // (was a text button at the bottom, which kept falling below the fold
+        // on small phones like Samsung A11).
+        OutlinedButton(
             onClick = { checkForUpdate(silent = false) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp),
             enabled = updateState !is UpdateUiState.Checking &&
                       updateState !is UpdateUiState.Downloading
         ) {
@@ -416,7 +427,7 @@ fun OnboardingScreen(
                 is UpdateUiState.Downloading -> "Downloading…"
                 else -> "Check for updates"
             }
-            Text(text = label, fontSize = 14.sp)
+            Text(text = label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
