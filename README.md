@@ -9,11 +9,11 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 </p>
 
 <p align="center">
-  <a href="https://github.com/alijanoffuz/olyapmiz/releases/latest">
-    <img src="https://img.shields.io/badge/Download_APK-yellow?style=for-the-badge&logo=android&logoColor=black&labelColor=000000&color=FFD400" alt="Download APK" height="36"/>
+  <a href="https://github.com/alijanoffuz/olyapmiz/releases/latest/download/olyapmiz.apk">
+    <img src="https://img.shields.io/badge/Download_APK-yellow?style=for-the-badge&logo=android&logoColor=black&labelColor=000000&color=FFD400" alt="Download latest APK" height="36"/>
   </a>
   <br/>
-  <sub>Once installed, the app auto-checks for updates on launch and offers to install new versions.</sub>
+  <sub>Direct download — always the latest signed release. Once installed, the app auto-checks for updates on launch.</sub>
 </p>
 
 > *O'lyapmiz* (Uzbek): "we are dying." A reminder that life is finite — and that this is what makes today worth showing up for.

@@ -70,8 +70,13 @@ jobs:
 
       - name: Rename APK
         run: |
+          # Produce both a stable name (olyapmiz.apk) so that
+          # /releases/latest/download/olyapmiz.apk is a permanent direct
+          # download link, AND a versioned copy for archival/historical
+          # reference inside each release.
+          cp app/build/outputs/apk/release/app-release.apk olyapmiz.apk
           cp app/build/outputs/apk/release/app-release.apk olyapmiz-${{ steps.version.outputs.name }}.apk
-          ls -la olyapmiz-${{ steps.version.outputs.name }}.apk
+          ls -la olyapmiz*.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -81,4 +86,5 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
+            olyapmiz.apk
             olyapmiz-${{ steps.version.outputs.name }}.apk
