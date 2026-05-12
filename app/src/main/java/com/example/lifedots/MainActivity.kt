@@ -58,9 +58,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.CircularProgressIndicator
 import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.ui.theme.LifeDotsTheme
+import com.example.lifedots.updater.UpdateChecker
+import com.example.lifedots.updater.UpdateInfo
+import com.example.lifedots.updater.UpdateInstaller
+import com.example.lifedots.updater.UpdateNotifier
 import com.example.lifedots.wallpaper.LifeDotsWallpaperService
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class MainActivity : ComponentActivity() {
@@ -80,6 +88,11 @@ class MainActivity : ComponentActivity() {
                         onOpenSettings = { openSettings() },
                         onAllowBackground = { requestIgnoreBatteryOptimizations() },
                         onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
+                        onInstallApk = { apk -> UpdateInstaller(this).launchInstaller(this, apk) },
+                        autoCheckOnLaunch = true,
+                        triggerFromNotification = intent?.getBooleanExtra(
+                            UpdateNotifier.EXTRA_FROM_UPDATE_NOTIFICATION, false
+                        ) ?: false,
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -195,9 +208,13 @@ fun OnboardingScreen(
     onOpenSettings: () -> Unit,
     onAllowBackground: () -> Unit,
     onOpenSamsungNeverSleeping: () -> Unit,
+    onInstallApk: (java.io.File) -> Unit,
+    autoCheckOnLaunch: Boolean,
+    triggerFromNotification: Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val dayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
     val totalDays = remember { Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_YEAR) }
 
@@ -215,6 +232,52 @@ fun OnboardingScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val isSamsung = remember { Build.MANUFACTURER.equals("samsung", ignoreCase = true) }
+
+    // Update state machine: Idle → Checking → (UpToDate | Available | Downloading | Ready | Error)
+    var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
+
+    fun checkForUpdate(silent: Boolean) {
+        if (updateState is UpdateUiState.Checking || updateState is UpdateUiState.Downloading) return
+        updateState = UpdateUiState.Checking
+        scope.launch {
+            val checker = UpdateChecker(context)
+            updateState = when (val result = checker.check()) {
+                is UpdateChecker.Result.UpdateAvailable -> {
+                    UpdateNotifier.notify(context, result.info)
+                    UpdateUiState.Available(result.info)
+                }
+                is UpdateChecker.Result.UpToDate ->
+                    if (silent) UpdateUiState.Idle else UpdateUiState.UpToDate(result.version)
+                is UpdateChecker.Result.NetworkError ->
+                    if (silent) UpdateUiState.Idle else UpdateUiState.Error(result.message)
+            }
+        }
+    }
+
+    fun startDownload(info: UpdateInfo) {
+        updateState = UpdateUiState.Downloading(info, 0f)
+        scope.launch {
+            val installer = UpdateInstaller(context)
+            val apk = installer.download(info) { downloaded, total ->
+                val progress = if (total > 0) downloaded.toFloat() / total else 0f
+                updateState = UpdateUiState.Downloading(info, progress)
+            }
+            updateState = if (apk != null) UpdateUiState.Ready(info, apk)
+                          else UpdateUiState.Error("Download failed")
+        }
+    }
+
+    // Auto-check on launch (silent — only surfaces if there's actually an update),
+    // and follow through immediately to download if the user opened the app from
+    // an "update available" notification.
+    LaunchedEffect(autoCheckOnLaunch, triggerFromNotification) {
+        if (autoCheckOnLaunch) checkForUpdate(silent = true)
+    }
+    LaunchedEffect(updateState, triggerFromNotification) {
+        if (triggerFromNotification) {
+            (updateState as? UpdateUiState.Available)?.let { startDownload(it.info) }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -294,6 +357,18 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
+        // Update card — only renders for non-Idle states so the home screen
+        // stays clean when there's nothing to say.
+        UpdateCard(
+            state = updateState,
+            onDownload = { info -> startDownload(info) },
+            onInstall = { apk -> onInstallApk(apk) },
+            onDismiss = { updateState = UpdateUiState.Idle }
+        )
+        if (updateState !is UpdateUiState.Idle) {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         // Buttons
         Button(
             onClick = onSetWallpaper,
@@ -326,6 +401,22 @@ fun OnboardingScreen(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium
             )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        TextButton(
+            onClick = { checkForUpdate(silent = false) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = updateState !is UpdateUiState.Checking &&
+                      updateState !is UpdateUiState.Downloading
+        ) {
+            val label = when (updateState) {
+                is UpdateUiState.Checking -> "Checking…"
+                is UpdateUiState.Downloading -> "Downloading…"
+                else -> "Check for updates"
+            }
+            Text(text = label, fontSize = 14.sp)
         }
     }
 }
@@ -389,3 +480,129 @@ private fun KeepAlwaysRunningCard(
     }
 }
 
+sealed interface UpdateUiState {
+    data object Idle : UpdateUiState
+    data object Checking : UpdateUiState
+    data class UpToDate(val version: String) : UpdateUiState
+    data class Available(val info: UpdateInfo) : UpdateUiState
+    data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateUiState
+    data class Ready(val info: UpdateInfo, val apk: java.io.File) : UpdateUiState
+    data class Error(val message: String) : UpdateUiState
+}
+
+@Composable
+private fun UpdateCard(
+    state: UpdateUiState,
+    onDownload: (UpdateInfo) -> Unit,
+    onInstall: (java.io.File) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (state is UpdateUiState.Idle || state is UpdateUiState.Checking) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            when (state) {
+                is UpdateUiState.Available -> {
+                    Text(
+                        "Update available: v${state.info.versionName}",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (state.info.releaseNotes.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            state.info.releaseNotes.take(200),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { onDownload(state.info) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Download and install", fontSize = 14.sp)
+                    }
+                }
+                is UpdateUiState.Downloading -> {
+                    Text(
+                        "Downloading v${state.info.versionName}…",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Text(
+                            "${(state.progress * 100).toInt()}%",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                is UpdateUiState.Ready -> {
+                    Text(
+                        "Ready to install v${state.info.versionName}",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { onInstall(state.apk) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Install now", fontSize = 14.sp)
+                    }
+                }
+                is UpdateUiState.UpToDate -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "You're on the latest version (${state.version}).",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onDismiss) {
+                            Text("OK", fontSize = 14.sp)
+                        }
+                    }
+                }
+                is UpdateUiState.Error -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Couldn't check for updates: ${state.message}",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onDismiss) {
+                            Text("OK", fontSize = 14.sp)
+                        }
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
+}

@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Read versionCode + versionName from -P gradle properties so CI can set them
+// from the git tag. Default to a 0/dev pair for local debug builds.
+val appVersionCode: Int = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 1
+val appVersionName: String = project.findProperty("appVersionName") as String? ?: "1.0-dev"
+
+// Load keystore.properties if present so local release builds can sign without
+// the developer having to set environment variables. The file is gitignored.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) load(keystorePropsFile.inputStream())
 }
 
 android {
@@ -12,10 +26,24 @@ android {
         applicationId = "com.example.lifedots"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "GITHUB_OWNER", "\"alijanoffuz\"")
+        buildConfigField("String", "GITHUB_REPO", "\"olyapmiz\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                storeFile = rootProject.file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
     }
 
     buildTypes {
@@ -25,6 +53,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Only sign if the keystore is available (CI provides it, local
+            // debug builds can ignore the missing config).
+            if (keystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
@@ -36,6 +69,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -49,8 +83,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // Gson for JSON serialization (goals feature)
+    // Gson for JSON serialization (goals feature + GitHub Releases response)
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Kotlin coroutines for the update checker network call
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
