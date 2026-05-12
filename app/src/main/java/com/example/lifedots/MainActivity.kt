@@ -81,16 +81,21 @@ class MainActivity : ComponentActivity() {
         // engine happens to start. Critical for users upgrading from upstream
         // LifeDots where view_mode=CONTINUOUS was persisted.
         LifeDotsPreferences.getInstance(this)
+        // Wipe any leftover downloaded APKs from previous update attempts so
+        // we don't accumulate them on disk.
+        UpdateInstaller(this).cleanCache()
         enableEdgeToEdge()
         setContent {
             LifeDotsTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    val installer = remember { UpdateInstaller(this) }
                     OnboardingScreen(
                         onSetWallpaper = { openWallpaperPicker() },
                         onOpenSettings = { openSettings() },
                         onAllowBackground = { requestIgnoreBatteryOptimizations() },
                         onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
-                        onInstallApk = { apk -> UpdateInstaller(this).launchInstaller(this, apk) },
+                        onInstallApk = { apk -> installer.launchInstaller(this, apk) },
+                        onLaunchSelfUninstall = { installer.launchSelfUninstall(this) },
                         autoCheckOnLaunch = true,
                         triggerFromNotification = intent?.getBooleanExtra(
                             UpdateNotifier.EXTRA_FROM_UPDATE_NOTIFICATION, false
@@ -210,7 +215,8 @@ fun OnboardingScreen(
     onOpenSettings: () -> Unit,
     onAllowBackground: () -> Unit,
     onOpenSamsungNeverSleeping: () -> Unit,
-    onInstallApk: (java.io.File) -> Unit,
+    onInstallApk: (java.io.File) -> UpdateInstaller.LaunchResult,
+    onLaunchSelfUninstall: () -> Unit,
     autoCheckOnLaunch: Boolean,
     triggerFromNotification: Boolean,
     modifier: Modifier = Modifier
@@ -367,7 +373,20 @@ fun OnboardingScreen(
         UpdateCard(
             state = updateState,
             onDownload = { info -> startDownload(info) },
-            onInstall = { apk -> onInstallApk(apk) },
+            onInstall = { apk ->
+                val result = onInstallApk(apk)
+                if (result == UpdateInstaller.LaunchResult.SignatureMismatch) {
+                    // The downloaded APK is signed differently from what's
+                    // installed (typically: user is on a debug or sideloaded
+                    // build, now upgrading to a release-signed build). The
+                    // installer would refuse — surface the manual steps.
+                    val info = (updateState as? UpdateUiState.Ready)?.info
+                    if (info != null) {
+                        updateState = UpdateUiState.SignatureMismatch(info)
+                    }
+                }
+            },
+            onLaunchSelfUninstall = onLaunchSelfUninstall,
             onDismiss = { updateState = UpdateUiState.Idle }
         )
         if (updateState !is UpdateUiState.Idle) {
@@ -498,6 +517,7 @@ sealed interface UpdateUiState {
     data class Available(val info: UpdateInfo) : UpdateUiState
     data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateUiState
     data class Ready(val info: UpdateInfo, val apk: java.io.File) : UpdateUiState
+    data class SignatureMismatch(val info: UpdateInfo) : UpdateUiState
     data class Error(val message: String) : UpdateUiState
 }
 
@@ -506,6 +526,7 @@ private fun UpdateCard(
     state: UpdateUiState,
     onDownload: (UpdateInfo) -> Unit,
     onInstall: (java.io.File) -> Unit,
+    onLaunchSelfUninstall: () -> Unit,
     onDismiss: () -> Unit
 ) {
     if (state is UpdateUiState.Idle || state is UpdateUiState.Checking) return
@@ -594,6 +615,37 @@ private fun UpdateCard(
                         TextButton(onClick = onDismiss) {
                             Text("OK", fontSize = 14.sp)
                         }
+                    }
+                }
+                is UpdateUiState.SignatureMismatch -> {
+                    Text(
+                        "One-time uninstall needed",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Your current install was signed with a different key " +
+                            "(likely a debug or sideloaded build). Android won't install " +
+                            "v${state.info.versionName} on top of it. Tap below to " +
+                            "uninstall, then reopen the downloaded APK to install fresh — " +
+                            "from then on, all future updates work in-place automatically.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = onLaunchSelfUninstall,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Uninstall current version", fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                        Text("Later", fontSize = 14.sp)
                     }
                 }
                 is UpdateUiState.Error -> {
