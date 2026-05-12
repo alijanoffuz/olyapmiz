@@ -25,6 +25,7 @@ import android.renderscript.RenderScript
 import android.renderscript.ScriptIntrinsicBlur
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import com.example.lifedots.receiver.DateChangeReceiver
 import com.example.lifedots.preferences.AnimationSettings
 import com.example.lifedots.preferences.AnimationType
 import com.example.lifedots.preferences.BackgroundSettings
@@ -151,6 +152,9 @@ class LifeDotsWallpaperService : WallpaperService() {
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             LifeDotsPreferences.addWallpaperChangeListener(settingsChangeListener)
+            // Schedule the daily refresh alarm the first time the wallpaper runs, so
+            // users don't have to wait for a reboot for the safety net to arm.
+            DateChangeReceiver.scheduleDailyAlarm(applicationContext)
         }
 
         override fun onDestroy() {
@@ -224,8 +228,12 @@ class LifeDotsWallpaperService : WallpaperService() {
             try {
                 canvas = holder.lockCanvas()
                 if (canvas != null) {
+                    val currentDay = getCurrentDayOfYear()
+                    if (currentDay != lastDrawnDay && lastDrawnDay != -1) {
+                        android.util.Log.i("LifeDots", "Day rolled over: $lastDrawnDay → $currentDay")
+                    }
                     drawDots(canvas)
-                    lastDrawnDay = getCurrentDayOfYear()
+                    lastDrawnDay = currentDay
                 }
             } finally {
                 if (canvas != null) {
@@ -274,40 +282,47 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // Apply position and scale transformations
             val positionSettings = settings.positionSettings
-            canvas.save()
 
             // Calculate offset based on screen size
             val offsetX = canvas.width * (positionSettings.horizontalOffset / 100f)
             val offsetY = canvas.height * (positionSettings.verticalOffset / 100f)
 
-            // Apply transformations
-            canvas.translate(offsetX, offsetY)
-            canvas.scale(
-                positionSettings.scale,
-                positionSettings.scale,
-                canvas.width / 2f,
-                canvas.height / 2f
-            )
+            // CALENDAR view manages its own transforms internally so its bottom stats
+            // can be anchored to the screen regardless of the user's vertical offset.
+            // Tree effect and other view modes use a shared outer transform.
+            val isCalendarMode = !settings.treeEffectSettings.enabled &&
+                settings.viewModeSettings.mode == ViewMode.CALENDAR
 
-            // Check if tree effect should be drawn instead of dots
-            if (settings.treeEffectSettings.enabled) {
-                drawTreeEffect(canvas, settings, colors, dayOfYear, totalDays, topOffset, bottomOffset)
+            if (isCalendarMode) {
+                drawCalendarView(canvas, settings, colors, dayOfYear, topOffset, bottomOffset, positionSettings)
             } else {
-                // Draw based on view mode
-                when (settings.viewModeSettings.mode) {
-                    ViewMode.CONTINUOUS -> {
-                        drawContinuousView(canvas, settings, colors, dayOfYear, totalDays, topOffset, bottomOffset)
-                    }
-                    ViewMode.MONTHLY -> {
-                        drawMonthlyView(canvas, settings, colors, dayOfYear, topOffset, bottomOffset)
-                    }
-                    ViewMode.CALENDAR -> {
-                        drawCalendarView(canvas, settings, colors, dayOfYear, topOffset, bottomOffset)
+                canvas.save()
+                canvas.translate(offsetX, offsetY)
+                canvas.scale(
+                    positionSettings.scale,
+                    positionSettings.scale,
+                    canvas.width / 2f,
+                    canvas.height / 2f
+                )
+
+                if (settings.treeEffectSettings.enabled) {
+                    drawTreeEffect(canvas, settings, colors, dayOfYear, totalDays, topOffset, bottomOffset)
+                } else {
+                    when (settings.viewModeSettings.mode) {
+                        ViewMode.CONTINUOUS -> {
+                            drawContinuousView(canvas, settings, colors, dayOfYear, totalDays, topOffset, bottomOffset)
+                        }
+                        ViewMode.MONTHLY -> {
+                            drawMonthlyView(canvas, settings, colors, dayOfYear, topOffset, bottomOffset)
+                        }
+                        ViewMode.CALENDAR -> {
+                            // Handled above in the dedicated branch.
+                        }
                     }
                 }
-            }
 
-            canvas.restore()
+                canvas.restore()
+            }
 
             // Feature 6: Draw goals at bottom if enabled and positioned there
             if (settings.goalSettings.enabled && settings.goalSettings.position == GoalPosition.BOTTOM) {
@@ -483,98 +498,289 @@ class LifeDotsWallpaperService : WallpaperService() {
             colors: ThemeColors,
             dayOfYear: Int,
             topOffset: Float,
-            bottomOffset: Float
+            bottomOffset: Float,
+            positionSettings: PositionSettings
         ) {
             // Reset animation counters
             currentDotIndex = 0
             totalDotsInView = getTotalDaysInYear()
 
-            val calendar = Calendar.getInstance()
-            val currentYear = calendar.get(Calendar.YEAR)
+            val cal = Calendar.getInstance()
+            val currentYear = cal.get(Calendar.YEAR)
 
-            val columnsPerRow = settings.calendarViewSettings.columnsPerRow
-            val rowsOfMonths = (12 + columnsPerRow - 1) / columnsPerRow
+            val columns = settings.calendarViewSettings.columnsPerRow.coerceIn(2, 4)
+            val rows = (12 + columns - 1) / columns
 
-            val availableWidth = canvas.width.toFloat()
-            val availableHeight = canvas.height - topOffset - bottomOffset
+            val width = canvas.width.toFloat()
+            val height = canvas.height.toFloat()
+            val aspectRatio = height / width
 
-            val cellWidth = availableWidth / columnsPerRow
-            val cellHeight = availableHeight / rowsOfMonths
+            // Aspect-aware horizontal padding (matches Remainders refs exactly)
+            val paddingRatio = when {
+                aspectRatio > 2.1f -> 0.12f
+                aspectRatio > 2.0f -> 0.15f
+                else -> 0.18f
+            }
+            val paddingX = width * paddingRatio
+            val availableWidth = width - 2 * paddingX
+            val cellWidth = availableWidth / columns
 
-            val padding = 8f
+            // Pull the calendar up so it sits closer to the date row, but keep a small
+            // gap so it doesn't overlap the lockscreen clock/date.
+            val safeTopRatio = if (aspectRatio > 2.0f) 0.10f else 0.13f
+            val safeTop = (height * safeTopRatio).coerceAtLeast(topOffset)
 
-            var cumulativeDayOfYear = 0
-            val daysPerMonth = IntArray(12)
-            for (m in 0..11) {
-                val tempCal = Calendar.getInstance()
-                tempCal.set(currentYear, m, 1)
-                daysPerMonth[m] = tempCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            // Stats are anchored to a fixed position near the bottom edge — below the
+            // under-display fingerprint hint zone. This baseline is intentionally
+            // locked: the user's vertical-offset slider moves only the grid, not stats.
+            val statsBottomBaseline = height * 0.965f
+
+            val showStats = settings.calendarViewSettings.showYearStats
+            val showEventCountdown = showStats && settings.calendarViewSettings.eventEnabled
+
+            // Provisional dot size to drive label/stats font sizes (final after layout)
+            val maxDotSizeH = cellWidth / 8f
+            // Grid area: between safeTop and (stats top - margin). We back-compute dotSize
+            // by solving for the largest dotSize that lets the grid fit between safeTop and
+            // the top of the stats block (which depends on dotSize via labelSize).
+            // Solve: gridStartY = safeTop ; gridEndY + (3 + extraLineCount) * 1.6d <= statsBottomBaseline
+            // gridEndY = safeTop + rows*12.1d + (rows-1)*1.6d  →  (4.8d + 1.6d) extra for stats line 1
+            // For event: + 0.8d + 1.6d more = 7.2d total extra after grid.
+            val statsExtraDotUnits = when {
+                showEventCountdown -> 4.8f + 1.6f + 0.8f + 1.6f  // margin + line1 + lineGap + line2
+                showStats -> 4.8f + 1.6f                          // margin + line1
+                else -> 0f
+            }
+            val gridUnits = 12.1f * rows + 1.6f * (rows - 1)
+            val totalDotUnitsForFit = gridUnits + statsExtraDotUnits
+            val maxDotSizeV = (statsBottomBaseline - safeTop) / totalDotUnitsForFit
+            // Hard cap at 20px to match references' minimalist aesthetic
+            val dotSize = min(maxDotSizeH, maxDotSizeV).coerceAtMost(20f)
+
+            val dotGap = dotSize * 0.7f
+            val labelSize = dotSize * 1.6f
+            val labelMarginBottom = dotSize * 1.0f
+            val blockHeight = labelSize + labelMarginBottom + 6 * dotSize + 5 * dotGap
+            val rowGap = labelSize * 1.0f
+            val totalGridHeight = rows * blockHeight + (rows - 1) * rowGap
+
+            val statsMargin = rowGap * 3f
+            val statsFontSize = labelSize
+            val statsLineGap = labelSize * 0.5f
+
+            // Stats lines anchored to fixed positions from screen bottom
+            val statsLine2BaselineY = statsBottomBaseline
+            val statsLine1BaselineY = if (showEventCountdown)
+                statsLine2BaselineY - statsLineGap - statsFontSize
+            else statsLine2BaselineY
+
+            // Anchor the grid near the top (close under the date/clock) with a small breathing
+            // margin, instead of vertically centering. This addresses the user's request to
+            // pull the calendar up. The middle gap between grid bottom and stats is OK —
+            // it falls behind the charging/notification overlay on the lockscreen anyway.
+            val statsBlockTopY = (if (showStats) statsLine1BaselineY else statsBottomBaseline) - statsFontSize
+            val gridBottomY = statsBlockTopY - statsMargin
+            val gridAreaHeight = gridBottomY - safeTop
+            val gridStartY = if (gridAreaHeight > totalGridHeight)
+                safeTop + labelSize  // anchored just under safeTop with a small label-height breathing room
+            else
+                safeTop + ((gridAreaHeight - totalGridHeight) / 2f).coerceAtLeast(0f)
+
+            val dotGridWidth = 7 * dotSize + 6 * dotGap
+            val cellCenterOffset = (cellWidth - dotGridWidth) / 2
+
+            val mondayFirst = settings.calendarViewSettings.mondayFirst
+
+            // Resolve the event's day-of-year (used both for the red dot and the countdown)
+            val eventCfg = settings.calendarViewSettings
+            var eventDayOfYear = -1
+            if (eventCfg.eventEnabled) {
+                val evCal = Calendar.getInstance().apply {
+                    clear()
+                    set(currentYear, eventCfg.eventMonth, eventCfg.eventDay)
+                }
+                if (evCal.get(Calendar.YEAR) == currentYear) {
+                    eventDayOfYear = evCal.get(Calendar.DAY_OF_YEAR)
+                }
             }
 
-            for (month in 0..11) {
-                val gridRow = month / columnsPerRow
-                val gridCol = month % columnsPerRow
+            // Setup label paint
+            monthLabelPaint.color = settings.viewModeSettings.monthLabelColor
+            monthLabelPaint.textSize = labelSize
+            monthLabelPaint.typeface = Typeface.MONOSPACE
+            val baseLabelAlpha = monthLabelPaint.alpha
+            monthLabelPaint.alpha = 180
 
-                val cellLeft = gridCol * cellWidth + padding
-                val cellTop = topOffset + gridRow * cellHeight + padding
-                val cellInnerWidth = cellWidth - 2 * padding
-                val cellInnerHeight = cellHeight - 2 * padding
+            var globalDayCounter = 0
 
-                // Draw month label
-                val labelHeight = 20f
-                monthLabelPaint.color = settings.viewModeSettings.monthLabelColor
-                monthLabelPaint.textSize = 12f
-                monthLabelPaint.typeface = Typeface.DEFAULT_BOLD
+            // The grid (month labels + day dots) responds to the user's position/scale
+            // settings. Stats below are drawn AFTER canvas.restore() so they stay
+            // anchored to the bottom of the screen no matter how the user moves the grid.
+            canvas.save()
+            val offsetX = canvas.width * (positionSettings.horizontalOffset / 100f)
+            val offsetY = canvas.height * (positionSettings.verticalOffset / 100f)
+            canvas.translate(offsetX, offsetY)
+            canvas.scale(
+                positionSettings.scale,
+                positionSettings.scale,
+                canvas.width / 2f,
+                canvas.height / 2f
+            )
+
+            for (monthIndex in 0..11) {
+                val tempCal = Calendar.getInstance()
+                tempCal.set(currentYear, monthIndex, 1)
+                val daysInMonth = tempCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                var firstDayOffset = tempCal.get(Calendar.DAY_OF_WEEK) - 1  // 0=Sun..6=Sat
+                if (mondayFirst) {
+                    firstDayOffset = if (firstDayOffset == 0) 6 else firstDayOffset - 1
+                }
+
+                val gridCol = monthIndex % columns
+                val gridRow = monthIndex / columns
+
+                val cellLeft = paddingX + gridCol * cellWidth + cellCenterOffset
+                val cellTop = gridStartY + gridRow * (blockHeight + rowGap)
+
+                // Draw month label (left-aligned to the dot grid)
                 if (settings.viewModeSettings.showMonthLabels) {
-                    canvas.drawText(shortMonthNames[month], cellLeft + 4f, cellTop + 14f, monthLabelPaint)
+                    canvas.drawText(shortMonthNames[monthIndex], cellLeft, cellTop + labelSize, monthLabelPaint)
                 }
 
-                val daysInMonth = daysPerMonth[month]
-                val dotsAreaTop = cellTop + labelHeight
-                val dotsAreaHeight = cellInnerHeight - labelHeight
+                val dotsTop = cellTop + labelSize + labelMarginBottom
 
-                // Use 7 columns for a week-like layout in calendar view
-                val cols = 7
-                val rows = (daysInMonth + cols - 1) / cols
+                // 7×6 fixed grid, weekday-aligned. Skip empty leading/trailing cells.
+                for (i in 0 until 42) {
+                    val dayNum = i - firstDayOffset + 1
+                    if (dayNum < 1 || dayNum > daysInMonth) continue
 
-                val dotCellSize = min(cellInnerWidth / cols, dotsAreaHeight / rows)
-                val dotSizeMultiplier = when (settings.dotSize) {
-                    DotSize.TINY -> 0.35f
-                    DotSize.SMALL -> 0.45f
-                    DotSize.MEDIUM -> 0.55f
-                    DotSize.LARGE -> 0.65f
-                    DotSize.HUGE -> 0.75f
-                }
-                val dotRadius = (dotCellSize / 2) * dotSizeMultiplier
+                    globalDayCounter++
 
-                val gridWidth = cols * dotCellSize
-                val startX = cellLeft + (cellInnerWidth - gridWidth) / 2
+                    val row = i / 7
+                    val col = i % 7
 
-                var dayIndex = 0
-                for (row in 0 until rows) {
-                    for (col in 0 until cols) {
-                        if (dayIndex >= daysInMonth) break
+                    val cx = cellLeft + col * (dotSize + dotGap) + dotSize / 2
+                    val cy = dotsTop + row * (dotSize + dotGap) + dotSize / 2
 
-                        val cx = startX + col * dotCellSize + dotCellSize / 2
-                        val cy = dotsAreaTop + row * dotCellSize + dotCellSize / 2
+                    val isEventDay = eventCfg.eventEnabled && globalDayCounter == eventDayOfYear
+                    val isToday = globalDayCounter == dayOfYear && settings.highlightToday
 
-                        val absoluteDay = cumulativeDayOfYear + dayIndex + 1
-                        val dotType = when {
-                            absoluteDay == dayOfYear && settings.highlightToday -> DotType.TODAY
-                            absoluteDay <= dayOfYear -> DotType.FILLED
-                            else -> DotType.EMPTY
+                    when {
+                        isEventDay -> {
+                            drawTintedDot(canvas, cx, cy, dotSize / 2, eventCfg.eventColor, glow = true)
+                            currentDotIndex++
                         }
-
-                        drawStyledDot(canvas, cx, cy, dotRadius, dotType, settings, colors)
-                        dayIndex++
+                        isToday -> {
+                            drawTintedDot(canvas, cx, cy, dotSize / 2, eventCfg.currentWeekColor, glow = true)
+                            currentDotIndex++
+                        }
+                        globalDayCounter < dayOfYear ->
+                            drawStyledDot(canvas, cx, cy, dotSize / 2, DotType.FILLED, settings, colors)
+                        else ->
+                            drawStyledDot(canvas, cx, cy, dotSize / 2, DotType.EMPTY, settings, colors)
                     }
                 }
-                cumulativeDayOfYear += daysInMonth
+            }
+
+            canvas.restore()
+
+            // Restore label paint alpha for other views that share this Paint
+            monthLabelPaint.alpha = baseLabelAlpha
+
+            // Stats line at bottom: "Xd left · X%"
+            if (settings.calendarViewSettings.showYearStats) {
+                val totalDays = getTotalDaysInYear()
+                val daysLeft = totalDays - dayOfYear
+                val percent = (dayOfYear.toFloat() / totalDays * 100).toInt()
+
+                val leftText = "${daysLeft}d left"
+                val sepText = "  ·  "
+                val pctText = "$percent%"
+
+                val statsPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                statsPaint.textSize = statsFontSize
+                statsPaint.typeface = Typeface.MONOSPACE
+                statsPaint.textAlign = Paint.Align.LEFT
+
+                val leftW = statsPaint.measureText(leftText)
+                val sepW = statsPaint.measureText(sepText)
+                val pctW = statsPaint.measureText(pctText)
+                val totalW = leftW + sepW + pctW
+
+                val baselineY = statsLine1BaselineY
+                var x = (width - totalW) / 2
+
+                statsPaint.color = colors.todayDot
+                statsPaint.alpha = 255
+                canvas.drawText(leftText, x, baselineY, statsPaint)
+                x += leftW
+
+                statsPaint.color = settings.viewModeSettings.monthLabelColor
+                statsPaint.alpha = 130
+                canvas.drawText(sepText, x, baselineY, statsPaint)
+                x += sepW
+
+                canvas.drawText(pctText, x, baselineY, statsPaint)
+
+                // Second line: event countdown (e.g., "75d to birthday")
+                if (showEventCountdown && eventDayOfYear > 0) {
+                    val diff = eventDayOfYear - dayOfYear
+                    if (diff > 0) {
+                        val countText = "${diff}d to "
+                        val labelText = eventCfg.eventLabel
+
+                        statsPaint.maskFilter = null
+                        statsPaint.alpha = 255
+                        val countW = statsPaint.measureText(countText)
+                        val labelW = statsPaint.measureText(labelText)
+                        val line2W = countW + labelW
+
+                        val line2BaselineY = statsLine2BaselineY
+                        run {
+                            var x2 = (width - line2W) / 2
+
+                            statsPaint.color = eventCfg.eventColor
+                            canvas.drawText(countText, x2, line2BaselineY, statsPaint)
+                            x2 += countW
+
+                            statsPaint.color = settings.viewModeSettings.monthLabelColor
+                            statsPaint.alpha = 130
+                            canvas.drawText(labelText, x2, line2BaselineY, statsPaint)
+                        }
+                    }
+                }
             }
         }
 
         private var currentDotIndex = 0
         private var totalDotsInView = 365
+
+        private val tintedDotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val tintedGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        private fun drawTintedDot(
+            canvas: Canvas,
+            cx: Float,
+            cy: Float,
+            radius: Float,
+            color: Int,
+            glow: Boolean
+        ) {
+            if (glow) {
+                tintedGlowPaint.color = color
+                tintedGlowPaint.alpha = 90
+                tintedGlowPaint.maskFilter = BlurMaskFilter(radius * 2.5f, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawCircle(cx, cy, radius * 2.2f, tintedGlowPaint)
+
+                tintedGlowPaint.alpha = 140
+                tintedGlowPaint.maskFilter = BlurMaskFilter(radius * 1.2f, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawCircle(cx, cy, radius * 1.5f, tintedGlowPaint)
+            }
+            tintedDotPaint.color = color
+            tintedDotPaint.alpha = 255
+            tintedDotPaint.maskFilter = null
+            canvas.drawCircle(cx, cy, radius, tintedDotPaint)
+        }
 
         private fun drawStyledDot(
             canvas: Canvas,

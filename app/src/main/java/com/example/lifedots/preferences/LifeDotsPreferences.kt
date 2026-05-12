@@ -55,13 +55,25 @@ enum class ViewMode {
 }
 
 data class ViewModeSettings(
-    val mode: ViewMode = ViewMode.CONTINUOUS,
+    val mode: ViewMode = ViewMode.CALENDAR,
     val showMonthLabels: Boolean = true,
     val monthLabelColor: Int = 0xFFFFFFFF.toInt()
 )
 
 data class CalendarViewSettings(
-    val columnsPerRow: Int = 3  // 3x4 or 4x3 grid
+    val columnsPerRow: Int = 3,  // 3x4 or 4x3 grid
+    val showYearStats: Boolean = true,
+    val mondayFirst: Boolean = false,
+    // Highlight the current calendar week with a warm tint and glow on today
+    val highlightCurrentWeek: Boolean = true,
+    val currentWeekColor: Int = 0xFFFFD54F.toInt(),  // warm yellow
+    // Optional milestone event (week tinted; countdown shown below year stats).
+    // Disabled by default so a fresh install shows no personal date.
+    val eventEnabled: Boolean = false,
+    val eventMonth: Int = 0,         // 0-indexed; 0 = January
+    val eventDay: Int = 1,
+    val eventLabel: String = "",
+    val eventColor: Int = 0xFFEF5350.toInt()  // warm red
 )
 
 // Feature 1: Background Photo
@@ -251,13 +263,22 @@ class LifeDotsPreferences(context: Context) {
 
         // Features 4 & 5: View Modes
         val viewModeSettings = ViewModeSettings(
-            mode = ViewMode.valueOf(prefs.getString(KEY_VIEW_MODE, ViewMode.CONTINUOUS.name) ?: ViewMode.CONTINUOUS.name),
+            mode = ViewMode.valueOf(prefs.getString(KEY_VIEW_MODE, ViewMode.CALENDAR.name) ?: ViewMode.CALENDAR.name),
             showMonthLabels = prefs.getBoolean(KEY_SHOW_MONTH_LABELS, true),
             monthLabelColor = prefs.getInt(KEY_MONTH_LABEL_COLOR, 0xFFFFFFFF.toInt())
         )
 
         val calendarViewSettings = CalendarViewSettings(
-            columnsPerRow = prefs.getInt(KEY_CALENDAR_COLUMNS, 3)
+            columnsPerRow = prefs.getInt(KEY_CALENDAR_COLUMNS, 3),
+            showYearStats = prefs.getBoolean(KEY_CALENDAR_STATS, true),
+            mondayFirst = prefs.getBoolean(KEY_CALENDAR_MONDAY_FIRST, false),
+            highlightCurrentWeek = prefs.getBoolean(KEY_CALENDAR_HIGHLIGHT_WEEK, true),
+            currentWeekColor = prefs.getInt(KEY_CALENDAR_WEEK_COLOR, 0xFFFFD54F.toInt()),
+            eventEnabled = prefs.getBoolean(KEY_CALENDAR_EVENT_ENABLED, false),
+            eventMonth = prefs.getInt(KEY_CALENDAR_EVENT_MONTH, 0),
+            eventDay = prefs.getInt(KEY_CALENDAR_EVENT_DAY, 1),
+            eventLabel = prefs.getString(KEY_CALENDAR_EVENT_LABEL, "") ?: "",
+            eventColor = prefs.getInt(KEY_CALENDAR_EVENT_COLOR, 0xFFEF5350.toInt())
         )
 
         // Feature 1: Background Photo
@@ -789,6 +810,15 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_SHOW_MONTH_LABELS = "show_month_labels"
         private const val KEY_MONTH_LABEL_COLOR = "month_label_color"
         private const val KEY_CALENDAR_COLUMNS = "calendar_columns"
+        private const val KEY_CALENDAR_STATS = "calendar_stats"
+        private const val KEY_CALENDAR_MONDAY_FIRST = "calendar_monday_first"
+        private const val KEY_CALENDAR_HIGHLIGHT_WEEK = "calendar_highlight_week"
+        private const val KEY_CALENDAR_WEEK_COLOR = "calendar_week_color"
+        private const val KEY_CALENDAR_EVENT_ENABLED = "calendar_event_enabled"
+        private const val KEY_CALENDAR_EVENT_MONTH = "calendar_event_month"
+        private const val KEY_CALENDAR_EVENT_DAY = "calendar_event_day"
+        private const val KEY_CALENDAR_EVENT_LABEL = "calendar_event_label"
+        private const val KEY_CALENDAR_EVENT_COLOR = "calendar_event_color"
 
         // Feature 1: Background Photo keys
         private const val KEY_BACKGROUND_ENABLED = "background_enabled"

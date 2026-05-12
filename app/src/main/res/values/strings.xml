@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LifeDots</string>
-    <string name="wallpaper_description">A minimal live wallpaper that visualizes the passing of time with 365 dots</string>
-    <string name="settings_title">LifeDots Settings</string>
+    <string name="app_name">O\'lyapmiz</string>
+    <string name="wallpaper_description">A minimal live wallpaper that visualizes the passing of the year, one dot at a time.</string>
+    <string name="settings_title">O\'lyapmiz Settings</string>
 
     <!-- Onboarding -->
-    <string name="onboarding_title">LifeDots</string>
-    <string name="onboarding_subtitle">See time pass, one dot at a time</string>
-    <string name="onboarding_description">365 dots. One fills each day. A quiet reminder that time is moving forward.</string>
+    <string name="onboarding_title">O\'lyapmiz</string>
+    <string name="onboarding_subtitle">See the year pass, one dot at a time</string>
+    <string name="onboarding_description">365 dots, one filled each day. A quiet reminder that time is moving forward — and that life is finite.</string>
     <string name="set_wallpaper">Set as Wallpaper</string>
     <string name="open_settings">Customize</string>
 

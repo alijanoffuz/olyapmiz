@@ -1,13 +1,15 @@
 package com.example.lifedots
 
 import android.app.WallpaperManager
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,13 +30,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
 import com.example.lifedots.ui.theme.LifeDotsTheme
 import com.example.lifedots.wallpaper.LifeDotsWallpaperService
 import java.util.Calendar
@@ -57,13 +60,57 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openWallpaperPicker() {
-        val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-            putExtra(
-                WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                ComponentName(this@MainActivity, LifeDotsWallpaperService::class.java)
-            )
+        val component = ComponentName(this@MainActivity, LifeDotsWallpaperService::class.java)
+        Log.i("LifeDots", "openWallpaperPicker: trying CHANGE_LIVE_WALLPAPER for $component")
+
+        // Primary path: ACTION_CHANGE_LIVE_WALLPAPER with the LifeDots component
+        // pre-selected. NEW_TASK is required on Samsung/Android 15 for cross-process
+        // wallpaper picker launches; without it the system silently rejects the start.
+        val primary = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+            putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, component)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        startActivity(intent)
+        if (tryStart(primary, "CHANGE_LIVE_WALLPAPER")) return
+
+        // Fallback 1: generic live-wallpaper chooser (no preselection)
+        val chooser = Intent("android.service.wallpaper.LIVE_WALLPAPER_CHOOSER").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (tryStart(chooser, "LIVE_WALLPAPER_CHOOSER")) return
+
+        // Fallback 2: open a wallpaper picker via the generic set-wallpaper chooser
+        val anyWallpaper = Intent.createChooser(
+            Intent(Intent.ACTION_SET_WALLPAPER), getString(R.string.set_wallpaper)
+        ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        if (tryStart(anyWallpaper, "SET_WALLPAPER")) return
+
+        Toast.makeText(
+            this,
+            "Couldn't open wallpaper picker. Open Settings → Wallpaper → Live wallpapers and pick LifeDots.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    private fun tryStart(intent: Intent, label: String): Boolean {
+        val resolved = packageManager.resolveActivity(intent, 0)
+        if (resolved == null) {
+            Log.w("LifeDots", "$label: no activity resolves intent ${intent.action}")
+            return false
+        }
+        Log.i("LifeDots", "$label: resolved to ${resolved.activityInfo.packageName}/${resolved.activityInfo.name}")
+        return try {
+            startActivity(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            Log.w("LifeDots", "$label: activity not found", e)
+            false
+        } catch (e: SecurityException) {
+            Log.w("LifeDots", "$label: security exception", e)
+            false
+        } catch (e: Exception) {
+            Log.w("LifeDots", "$label: failed", e)
+            false
+        }
     }
 
     private fun openSettings() {
@@ -88,11 +135,12 @@ fun OnboardingScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Preview dots visualization
-        DotsPreview(
-            dayOfYear = dayOfYear,
-            totalDays = 365,
-            modifier = Modifier.size(200.dp)
+        // App logo
+        Image(
+            painter = painterResource(id = R.mipmap.ic_launcher),
+            contentDescription = stringResource(R.string.app_name),
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(180.dp)
         )
 
         Spacer(modifier = Modifier.height(48.dp))
@@ -178,50 +226,3 @@ fun OnboardingScreen(
     }
 }
 
-@Composable
-fun DotsPreview(
-    dayOfYear: Int,
-    totalDays: Int,
-    modifier: Modifier = Modifier
-) {
-    val filledColor = MaterialTheme.colorScheme.onBackground
-    val emptyColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.15f)
-    val todayColor = Color(0xFF4A90D9)
-
-    Canvas(modifier = modifier) {
-        val cols = 15
-        val rows = (totalDays + cols - 1) / cols
-
-        val cellSize = minOf(size.width / cols, size.height / rows)
-        val dotRadius = cellSize * 0.35f
-
-        val gridWidth = cols * cellSize
-        val gridHeight = rows * cellSize
-        val startX = (size.width - gridWidth) / 2
-        val startY = (size.height - gridHeight) / 2
-
-        var dotIndex = 0
-        for (row in 0 until rows) {
-            for (col in 0 until cols) {
-                if (dotIndex >= totalDays) break
-
-                val cx = startX + col * cellSize + cellSize / 2
-                val cy = startY + row * cellSize + cellSize / 2
-
-                val color = when {
-                    dotIndex + 1 == dayOfYear -> todayColor
-                    dotIndex + 1 < dayOfYear -> filledColor
-                    else -> emptyColor
-                }
-
-                drawCircle(
-                    color = color,
-                    radius = dotRadius,
-                    center = Offset(cx, cy)
-                )
-                dotIndex++
-            }
-            if (dotIndex >= totalDays) break
-        }
-    }
-}
