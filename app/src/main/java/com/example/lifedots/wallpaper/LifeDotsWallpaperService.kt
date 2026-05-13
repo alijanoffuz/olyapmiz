@@ -86,6 +86,12 @@ class LifeDotsWallpaperService : WallpaperService() {
         private val treePaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val fluidPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+        // UMR view — class-level paints updated once per draw (avoids per-frame alloc)
+        private val umrFilledPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val umrEmptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val umrTodayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val umrGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+
         private val diamondPath = Path()
         private val rectF = RectF()
         private val treePath = Path()
@@ -287,8 +293,9 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // NEW: top-level mode dispatch. When Umr is active, render the
             // life-in-weeks grid and return; Yil's existing flow is untouched.
-            if (currentEffectiveMode(System.currentTimeMillis(), settings) == TopViewMode.UMR) {
-                drawUmrView(canvas, settings, colors)
+            val nowMs = System.currentTimeMillis()
+            if (currentEffectiveMode(nowMs, settings) == TopViewMode.UMR) {
+                drawUmrView(canvas, settings, colors, nowMs)
                 return
             }
 
@@ -804,13 +811,14 @@ class LifeDotsWallpaperService : WallpaperService() {
             }
         }
 
-        private fun drawUmrView(canvas: Canvas, settings: WallpaperSettings, colors: ThemeColors) {
+        private fun drawUmrView(canvas: Canvas, settings: WallpaperSettings, colors: ThemeColors, now: Long) {
             val birthdayMs = settings.umrSettings.birthdayEpochMs
-            val now = System.currentTimeMillis()
 
             val msPerWeek = 7L * 24L * 60L * 60L * 1000L
-            val weeksLived = if (birthdayMs > 0L) ((now - birthdayMs) / msPerWeek).toInt() else -1
             val totalCells = UmrLayoutCompute.ROWS * UmrLayoutCompute.COLS  // 4160
+            val weeksLived = if (birthdayMs > 0L)
+                ((now - birthdayMs) / msPerWeek).toInt().coerceAtMost(totalCells - 1)
+            else -1
 
             val layout = UmrLayoutCompute.compute(
                 widthPx = canvas.width,
@@ -834,27 +842,16 @@ class LifeDotsWallpaperService : WallpaperService() {
             canvas.translate(offsetX, offsetY)
             canvas.scale(position.scale, position.scale, canvas.width / 2f, canvas.height / 2f)
 
-            val filledPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = colors.filledDot
-                alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
-                style = Paint.Style.FILL
-            }
-            val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = colors.emptyDot
-                alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
-                style = Paint.Style.FILL
-            }
-            val todayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = colors.todayDot
-                style = Paint.Style.FILL
-            }
-            // Subtle glow for current-week dot, matching Yil's todayGlow vibe.
-            val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = colors.todayDot
-                alpha = 80
-                style = Paint.Style.FILL
-                maskFilter = BlurMaskFilter(layout.dotSizePx * 1.5f, BlurMaskFilter.Blur.NORMAL)
-            }
+            // Configure class-level paints once per draw (avoids per-frame allocation).
+            umrFilledPaint.color = colors.filledDot
+            umrFilledPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrEmptyPaint.color = colors.emptyDot
+            umrEmptyPaint.alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrTodayPaint.color = colors.todayDot
+            umrTodayPaint.alpha = 255
+            umrGlowPaint.color = colors.todayDot
+            umrGlowPaint.alpha = 80
+            umrGlowPaint.maskFilter = BlurMaskFilter(layout.dotSizePx * 1.5f, BlurMaskFilter.Blur.NORMAL)
 
             val r = layout.dotSizePx / 2f
 
@@ -866,16 +863,16 @@ class LifeDotsWallpaperService : WallpaperService() {
 
                 when {
                     // Birthday unset — render everything as future (empty).
-                    weeksLived < 0 -> canvas.drawCircle(cx, cy, r, emptyPaint)
+                    weeksLived < 0 -> canvas.drawCircle(cx, cy, r, umrEmptyPaint)
                     // Past
-                    i < weeksLived -> canvas.drawCircle(cx, cy, r, filledPaint)
+                    i < weeksLived -> canvas.drawCircle(cx, cy, r, umrFilledPaint)
                     // Current week — single tinted dot with a soft glow.
                     i == weeksLived -> {
-                        canvas.drawCircle(cx, cy, r * 1.4f, glowPaint)
-                        canvas.drawCircle(cx, cy, r, todayPaint)
+                        canvas.drawCircle(cx, cy, r * 1.4f, umrGlowPaint)
+                        canvas.drawCircle(cx, cy, r, umrTodayPaint)
                     }
                     // Future
-                    else -> canvas.drawCircle(cx, cy, r, emptyPaint)
+                    else -> canvas.drawCircle(cx, cy, r, umrEmptyPaint)
                 }
             }
 
