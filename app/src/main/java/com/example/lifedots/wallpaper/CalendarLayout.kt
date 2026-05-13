@@ -193,7 +193,7 @@ object UmrLayoutCompute {
     }
 
     /** Hard cap on dot diameter — keeps 4160 dots from looking chunky on high-DPI displays. */
-    private const val DOT_SIZE_CAP_PX = 12f
+    const val DOT_SIZE_CAP_PX = 12f
 
     fun compute(
         widthPx: Int,
@@ -232,6 +232,7 @@ object UmrLayoutCompute {
         val availHeight = (height - safeTopPx - safeBottomPx).coerceAtLeast(1f)
 
         val gapRatio = dotGapRatio(widthPx)
+        // gridWidth = COLS*d + (COLS-1)*gapRatio*d  =>  d = availWidth / (COLS + (COLS-1)*gapRatio)
         val maxDotByWidth = availWidth / (COLS + (COLS - 1) * gapRatio)
         val maxDotByHeight = availHeight / (ROWS + (ROWS - 1) * gapRatio)
         val dotSizePx = minOf(maxDotByWidth, maxDotByHeight, DOT_SIZE_CAP_PX).coerceAtLeast(1f)

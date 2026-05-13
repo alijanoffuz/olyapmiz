@@ -21,21 +21,29 @@ class UmrLayoutComputeTest {
 
     @Test fun `S21+ grid also fits vertically between safeTop and bottom`() {
         val l = compute(1080, 2400)
-        val available = 2400f - l.safeTopPx - 2400f * 0.06f
-        assertTrue("grid height ${l.gridHeightPx} must fit in $available",
-            l.gridHeightPx <= available + 0.5f)
+        // gridBottomPx is safeTopPx + gridHeightPx; it must not encroach on the bottom safe band.
+        // Bottom band is at least 6% of height by spec, so gridBottomPx must stay above 94% of height.
+        val bottomLimit = 2400f * 0.94f
+        assertTrue(
+            "grid bottom ${l.gridBottomPx} must stay above bottom safe band ($bottomLimit)",
+            l.gridBottomPx <= bottomLimit + 0.5f
+        )
     }
 
     @Test fun `Galaxy A11 at 720x1560 stays within bounds`() {
         val l = compute(720, 1560)
         assertTrue(l.gridWidthPx <= 720f - 2f * l.paddingXPx + 0.5f)
-        assertTrue(l.gridHeightPx > 0f)
+        assertTrue("grid bottom ${l.gridBottomPx} must stay above 94% of 1560",
+            l.gridBottomPx <= 1560f * 0.94f + 0.5f)
         assertTrue(l.dotSizePx >= 1f)
     }
 
     @Test fun `dot size never exceeds the hard cap`() {
         val l = compute(4000, 8000)
-        assertTrue("dotSize ${l.dotSizePx} must be <= cap (12px)", l.dotSizePx <= 12f + 0.001f)
+        assertTrue(
+            "dotSize ${l.dotSizePx} must be <= ${UmrLayoutCompute.DOT_SIZE_CAP_PX}px",
+            l.dotSizePx <= UmrLayoutCompute.DOT_SIZE_CAP_PX + 0.001f
+        )
     }
 
     @Test fun `grid is horizontally centered in the available band`() {
