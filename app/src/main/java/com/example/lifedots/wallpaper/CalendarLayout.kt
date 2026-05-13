@@ -136,3 +136,121 @@ data class CalendarLayout(
         }
     }
 }
+
+/**
+ * Layout result for the Umr (life-in-weeks) grid. 80 rows × 52 cols
+ * of dots, no stats line at the bottom, plus a small safe-bottom for
+ * the nav handle / fingerprint hint zone.
+ */
+data class UmrLayout(
+    /** Pixel padding on each horizontal side. */
+    val paddingXPx: Float,
+    /** Pixel offset from canvas top where the GRID begins drawing (pre-slider). */
+    val safeTopPx: Float,
+    /** Pixel offset from canvas top where the GRID ends. */
+    val gridBottomPx: Float,
+    /** Diameter of each dot, in pixels. */
+    val dotSizePx: Float,
+    /** Gap between adjacent dots, in pixels (already multiplied out). */
+    val dotGapPx: Float,
+    /** Total grid width: 52*dot + 51*gap. */
+    val gridWidthPx: Float,
+    /** Total grid height: 80*dot + 79*gap. */
+    val gridHeightPx: Float,
+    /** Where to start drawing the grid's leftmost column (centered in the available band). */
+    val gridLeftPx: Float,
+)
+
+/**
+ * Compute the Umr layout for a given canvas + insets. Mirrors the
+ * `CalendarLayout.compute` style: aspect-aware safe-top, declarative
+ * device-class buckets (no Build.MODEL lookups), hard pixel cap on
+ * dot size to keep visual density consistent across DPI tiers.
+ */
+object UmrLayoutCompute {
+    const val ROWS = 80
+    const val COLS = 52
+
+    /** Multiplier on dot size used to compute the gap. Smaller phones tighter. */
+    private fun dotGapRatio(widthPx: Int): Float = when {
+        widthPx <= 720 -> 0.55f
+        widthPx <= 900 -> 0.62f
+        else -> 0.70f
+    }
+
+    /** Aspect-aware top-band ratio (clock + date area on lockscreen). */
+    private fun safeTopRatio(aspect: Float): Float = when {
+        aspect > 2.1f -> 0.28f
+        aspect > 2.0f -> 0.25f
+        else -> 0.22f
+    }
+
+    /** Aspect-aware horizontal padding ratio. */
+    private fun paddingXRatio(aspect: Float): Float = when {
+        aspect > 2.1f -> 0.06f   // tighter than Yil's 0.12 — we need width for 52 cols
+        aspect > 2.0f -> 0.08f
+        else -> 0.10f
+    }
+
+    /** Hard cap on dot diameter — keeps 4160 dots from looking chunky on high-DPI displays. */
+    private const val DOT_SIZE_CAP_PX = 12f
+
+    fun compute(
+        widthPx: Int,
+        heightPx: Int,
+        topOffsetPx: Float,
+        bottomOffsetPx: Float,
+        systemSafeInsetTopPx: Int,
+        systemSafeInsetBottomPx: Int,
+        systemSafeInsetLeftPx: Int,
+        systemSafeInsetRightPx: Int,
+    ): UmrLayout {
+        val width = widthPx.toFloat()
+        val height = heightPx.toFloat()
+        val aspect = if (width > 0f) height / width else 2.0f
+
+        val paddingXPx = maxOf(
+            width * paddingXRatio(aspect),
+            systemSafeInsetLeftPx.toFloat(),
+            systemSafeInsetRightPx.toFloat(),
+        )
+
+        val safeTopPx = maxOf(
+            height * safeTopRatio(aspect),
+            topOffsetPx,
+            systemSafeInsetTopPx.toFloat(),
+        )
+
+        // Bottom band: smaller than Yil because there's no stats line.
+        val safeBottomPx = maxOf(
+            height * 0.06f,
+            bottomOffsetPx,
+            systemSafeInsetBottomPx.toFloat(),
+        )
+
+        val availWidth = (width - 2f * paddingXPx).coerceAtLeast(1f)
+        val availHeight = (height - safeTopPx - safeBottomPx).coerceAtLeast(1f)
+
+        val gapRatio = dotGapRatio(widthPx)
+        val maxDotByWidth = availWidth / (COLS + (COLS - 1) * gapRatio)
+        val maxDotByHeight = availHeight / (ROWS + (ROWS - 1) * gapRatio)
+        val dotSizePx = minOf(maxDotByWidth, maxDotByHeight, DOT_SIZE_CAP_PX).coerceAtLeast(1f)
+        val dotGapPx = dotSizePx * gapRatio
+
+        val gridWidthPx = COLS * dotSizePx + (COLS - 1) * dotGapPx
+        val gridHeightPx = ROWS * dotSizePx + (ROWS - 1) * dotGapPx
+        val gridLeftPx = paddingXPx + (availWidth - gridWidthPx) / 2f
+        val gridBottomPx = safeTopPx + gridHeightPx
+
+        return UmrLayout(
+            paddingXPx = paddingXPx,
+            safeTopPx = safeTopPx,
+            gridBottomPx = gridBottomPx,
+            dotSizePx = dotSizePx,
+            dotGapPx = dotGapPx,
+            gridWidthPx = gridWidthPx,
+            gridHeightPx = gridHeightPx,
+            gridLeftPx = gridLeftPx,
+        )
+    }
+}
