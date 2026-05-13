@@ -38,6 +38,19 @@ data class CalendarLayout(
     val statsBottomBaselinePx: Float,
     /** Multiplier on `dotSize` used to compute the gap between dots in a month grid. */
     val dotGapRatio: Float,
+    /**
+     * Multiplier on `dotSize` used to compute the gap BETWEEN adjacent month
+     * columns in the calendar grid (Jan→Feb, Feb→Mar, …). Distinct from
+     * `dotGapRatio` which spaces dots within a single month. Without an
+     * explicit inter-month gap the dot grids of adjacent months butt right
+     * up against each other on narrow phones (A11, 720px) — the rightmost
+     * dot of Jan's first row and the leftmost dot of Feb's first row sit
+     * on the same pixel column. With this multiplier the renderer solves
+     * for `dotSize` such that `cols × dotGridWidth + (cols-1) × monthMargin`
+     * fills the available width with a visible breathing gap regardless of
+     * device class.
+     */
+    val monthMarginRatio: Float,
     /** Hard upper bound on dot diameter, in pixels. */
     val dotSizeCapPx: Float,
 ) {
@@ -126,11 +139,20 @@ data class CalendarLayout(
             // on high-density displays.
             val dotSizeCapPx = 20f
 
+            // Inter-month horizontal gap, as a multiplier on dot size.
+            // 1.5 produces a clearly visible gap between adjacent months
+            // on every screen we tested without making the months feel
+            // dis-connected. Smaller phones still get a real gap because
+            // dot size shrinks proportionally (see renderer's H-budget
+            // solver), so the dp/px of the gap scales too.
+            val monthMarginRatio = 1.5f
+
             return CalendarLayout(
                 paddingXPx = paddingXPx,
                 safeTopPx = safeTopPx,
                 statsBottomBaselinePx = statsBottomBaselinePx,
                 dotGapRatio = dotGapRatio,
+                monthMarginRatio = monthMarginRatio,
                 dotSizeCapPx = dotSizeCapPx,
             )
         }
