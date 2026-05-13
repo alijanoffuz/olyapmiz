@@ -27,6 +27,7 @@ import android.renderscript.ScriptIntrinsicBlur
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 import android.view.WindowInsets
+import com.example.lifedots.R
 import com.example.lifedots.receiver.DateChangeReceiver
 import com.example.lifedots.service.KeepAliveService
 import com.example.lifedots.preferences.AnimationSettings
@@ -45,6 +46,7 @@ import com.example.lifedots.preferences.GoalPosition
 import com.example.lifedots.preferences.GoalSettings
 import com.example.lifedots.preferences.GridDensity
 import com.example.lifedots.preferences.LifeDotsPreferences
+import com.example.lifedots.preferences.LifetimeGranularity
 import com.example.lifedots.preferences.PositionSettings
 import com.example.lifedots.preferences.TextAlignment
 import com.example.lifedots.preferences.ThemeOption
@@ -329,7 +331,12 @@ class LifeDotsWallpaperService : WallpaperService() {
             // that fits under most lockscreen clocks. Users can drag away from 0
             // to fine-tune. Migration v3 in LifeDotsPreferences re-baselines any
             // saved value so existing users see the same visual position.
-            val offsetY = canvas.height * ((positionSettings.verticalOffset + VERTICAL_OFFSET_BASELINE) / 100f)
+            // LIFETIME fills the full available area, so the +19% calendar baseline
+            // would push the grid (and its stats line) off the bottom of the screen.
+            // Apply only the user's nudge for that mode.
+            val baseline = if (settings.viewModeSettings.mode == ViewMode.LIFETIME) 0f
+                else VERTICAL_OFFSET_BASELINE
+            val offsetY = canvas.height * ((positionSettings.verticalOffset + baseline) / 100f)
 
             // CALENDAR view manages its own transforms internally so its bottom stats
             // can be anchored to the screen regardless of the user's vertical offset.
@@ -362,10 +369,21 @@ class LifeDotsWallpaperService : WallpaperService() {
                         ViewMode.CALENDAR -> {
                             // Handled above in the dedicated branch.
                         }
+                        ViewMode.LIFETIME -> {
+                            drawLifetimeView(canvas, settings, colors, topOffset, bottomOffset)
+                        }
                     }
                 }
 
                 canvas.restore()
+
+                // Lifetime stats text — drawn AFTER restore so it stays anchored to
+                // the bottom of the screen and never moves with the user's vertical
+                // offset slider. Mirrors the calendar view's bottom stats placement.
+                if (settings.viewModeSettings.mode == ViewMode.LIFETIME &&
+                    !settings.treeEffectSettings.enabled) {
+                    drawLifetimeStats(canvas, settings, colors, bottomOffset)
+                }
             }
 
             // Floating goals list at bottom — same rule as top: skip in Calendar mode.
@@ -437,6 +455,144 @@ class LifeDotsWallpaperService : WallpaperService() {
                 }
                 if (dotIndex >= totalDays) break
             }
+        }
+
+        private fun drawLifetimeView(
+            canvas: Canvas,
+            settings: WallpaperSettings,
+            colors: ThemeColors,
+            topOffset: Float,
+            bottomOffset: Float
+        ) {
+            val lifetime = settings.lifetimeSettings
+
+            // Guard: no birth date configured → friendly prompt, no grid.
+            if (lifetime.birthDateMillis == 0L) {
+                monthLabelPaint.color = colors.filledDot
+                monthLabelPaint.textSize = 36f
+                monthLabelPaint.typeface = Typeface.DEFAULT
+                monthLabelPaint.alpha = 255
+                monthLabelPaint.textAlign = Paint.Align.CENTER
+                val prompt = applicationContext.getString(R.string.lifetime_prompt_birth)
+                val cx = canvas.width / 2f
+                val cy = topOffset + (canvas.height - topOffset - bottomOffset) / 2f
+                canvas.drawText(prompt, cx, cy, monthLabelPaint)
+                monthLabelPaint.textAlign = Paint.Align.LEFT
+                return
+            }
+
+            val expectancyYears = lifetime.lifeExpectancyYears.coerceIn(1, 200)
+            val cols = if (lifetime.granularity == LifetimeGranularity.WEEKS) 52 else 12
+            val rows = expectancyYears
+            val totalUnits = rows * cols
+
+            val unitMillis: Long = if (lifetime.granularity == LifetimeGranularity.WEEKS) {
+                7L * 86_400_000L
+            } else {
+                (365.2425 / 12.0 * 86_400_000.0).toLong()
+            }
+            val now = System.currentTimeMillis()
+            val elapsed = now - lifetime.birthDateMillis
+            val unitsPassed = if (elapsed <= 0L) 0
+                else (elapsed / unitMillis).toInt().coerceIn(0, totalUnits)
+
+            // Reset animation counters
+            currentDotIndex = 0
+            totalDotsInView = totalUnits
+
+            // Layout: mirror drawContinuousView's padding math.
+            val paddingPercent = when (settings.gridDensity) {
+                GridDensity.COMPACT -> 0.06f
+                GridDensity.NORMAL -> 0.08f
+                GridDensity.RELAXED -> 0.10f
+                GridDensity.SPACIOUS -> 0.12f
+            }
+            val horizontalPadding = canvas.width * paddingPercent
+            val verticalPadding = (canvas.height - topOffset - bottomOffset) * paddingPercent
+
+            val availableWidth = canvas.width - 2 * horizontalPadding
+            // Stats text is drawn outside the canvas translate (bottom-anchored,
+            // see drawFrame after canvas.restore()), so the grid uses the full
+            // available height here.
+            val availableHeight = (canvas.height - topOffset - bottomOffset) - 2 * verticalPadding
+
+            val cellSize = minOf(availableWidth / cols, availableHeight / rows).coerceAtLeast(2f)
+
+            val dotSizeMultiplier = when (settings.dotSize) {
+                DotSize.TINY -> 0.4f
+                DotSize.SMALL -> 0.55f
+                DotSize.MEDIUM -> 0.7f
+                DotSize.LARGE -> 0.85f
+                DotSize.HUGE -> 0.95f
+            }
+            val dotRadius = ((cellSize / 2f) * dotSizeMultiplier).coerceAtLeast(1.5f)
+
+            val gridWidth = cols * cellSize
+            val gridHeight = rows * cellSize
+            val startX = (canvas.width - gridWidth) / 2f
+            val areaTop = topOffset + verticalPadding
+            val areaHeight = (canvas.height - topOffset - bottomOffset) - 2 * verticalPadding
+            val startY = areaTop + (areaHeight - gridHeight) / 2f
+
+            for (row in 0 until rows) {
+                for (col in 0 until cols) {
+                    val index = row * cols + col
+                    val cx = startX + col * cellSize + cellSize / 2f
+                    val cy = startY + row * cellSize + cellSize / 2f
+                    val dotType = when {
+                        settings.highlightToday && index == unitsPassed && unitsPassed < totalUnits -> DotType.TODAY
+                        index < unitsPassed -> DotType.FILLED
+                        else -> DotType.EMPTY
+                    }
+                    drawStyledDot(canvas, cx, cy, dotRadius, dotType, settings, colors)
+                }
+            }
+
+            // Stats text intentionally NOT drawn here — see drawLifetimeStats()
+            // called from drawFrame after canvas.restore() so the text stays anchored
+            // to the bottom of the screen regardless of the user's vertical-offset
+            // slider, matching the calendar view's bottom stats behavior.
+        }
+
+        private fun drawLifetimeStats(
+            canvas: Canvas,
+            settings: WallpaperSettings,
+            colors: ThemeColors,
+            bottomOffset: Float
+        ) {
+            val lifetime = settings.lifetimeSettings
+            if (!lifetime.showStats || lifetime.birthDateMillis == 0L) return
+
+            val expectancyYears = lifetime.lifeExpectancyYears.coerceIn(1, 200)
+            val cols = if (lifetime.granularity == LifetimeGranularity.WEEKS) 52 else 12
+            val totalUnits = expectancyYears * cols
+            val unitMillis: Long = if (lifetime.granularity == LifetimeGranularity.WEEKS) {
+                7L * 86_400_000L
+            } else {
+                (365.2425 / 12.0 * 86_400_000.0).toLong()
+            }
+            val elapsed = System.currentTimeMillis() - lifetime.birthDateMillis
+            val unitsPassed = if (elapsed <= 0L) 0
+                else (elapsed / unitMillis).toInt().coerceIn(0, totalUnits)
+            val pct = if (totalUnits > 0) (unitsPassed * 100 / totalUnits) else 0
+
+            val statsResId = if (lifetime.granularity == LifetimeGranularity.WEEKS) {
+                R.string.lifetime_stats_weeks
+            } else {
+                R.string.lifetime_stats_months
+            }
+            val statsText = applicationContext.getString(statsResId, unitsPassed, totalUnits, pct)
+            monthLabelPaint.color = colors.filledDot
+            monthLabelPaint.textSize = 28f
+            monthLabelPaint.typeface = Typeface.DEFAULT
+            monthLabelPaint.alpha = 220
+            monthLabelPaint.textAlign = Paint.Align.CENTER
+            // Anchor near the bottom of the canvas, just above bottomOffset — same
+            // pattern the calendar view uses (height - safeBottom * 0.55f).
+            val statsY = canvas.height - bottomOffset * 0.55f
+            canvas.drawText(statsText, canvas.width / 2f, statsY, monthLabelPaint)
+            monthLabelPaint.textAlign = Paint.Align.LEFT
+            monthLabelPaint.alpha = 255
         }
 
         private fun drawMonthlyView(
