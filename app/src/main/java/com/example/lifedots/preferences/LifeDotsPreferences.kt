@@ -246,6 +246,8 @@ data class WallpaperSettings(
     val topViewMode: TopViewMode = TopViewMode.YIL,
     val autoSwitchSettings: AutoSwitchSettings = AutoSwitchSettings(),
     val umrSettings: UmrSettings = UmrSettings(),
+    val soundsEnabled: Boolean = true,
+    val vibrationsEnabled: Boolean = true,
 )
 
 /**
@@ -350,6 +352,10 @@ class LifeDotsPreferences(context: Context) {
             // defaults (Yil selected, auto-switch off, birthday unset). The
             // migration just marks the schema seen so future migrations can
             // assume any v9-or-later state.
+        }
+        if (stored < 10) {
+            // v10: introduces soundsEnabled + vibrationsEnabled. Both default
+            // true via the data-class defaults — no destructive writes needed.
         }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
@@ -498,6 +504,8 @@ class LifeDotsPreferences(context: Context) {
             umrSettings = UmrSettings(
                 birthdayEpochMs = prefs.getLong(KEY_UMR_BIRTHDAY_MS, 0L),
             ),
+            soundsEnabled = prefs.getBoolean(KEY_SOUNDS_ENABLED, true),
+            vibrationsEnabled = prefs.getBoolean(KEY_VIBRATIONS_ENABLED, true),
         )
     }
 
@@ -970,6 +978,20 @@ class LifeDotsPreferences(context: Context) {
         notifyWallpaperChanged()
     }
 
+    fun setSoundsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SOUNDS_ENABLED, enabled).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(soundsEnabled = enabled)
+        notifyWallpaperChanged()
+    }
+
+    fun setVibrationsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_VIBRATIONS_ENABLED, enabled).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(vibrationsEnabled = enabled)
+        notifyWallpaperChanged()
+    }
+
     fun notifyWallpaperChanged() {
         wallpaperChangeListeners.forEach { it.invoke() }
     }
@@ -982,7 +1004,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 9
+        private const val CURRENT_MIGRATION_VERSION = 10
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
@@ -1069,6 +1091,10 @@ class LifeDotsPreferences(context: Context) {
 
         // Visual Theme key
         private const val KEY_VISUAL_THEME = "visual_theme"
+
+        // Sounds and vibrations keys
+        private const val KEY_SOUNDS_ENABLED = "sounds_enabled"
+        private const val KEY_VIBRATIONS_ENABLED = "vibrations_enabled"
 
         // Top view mode + auto-switch + Umr keys
         private const val KEY_TOP_VIEW_MODE = "top_view_mode"
