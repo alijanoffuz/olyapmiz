@@ -570,41 +570,27 @@ class LifeDotsWallpaperService : WallpaperService() {
             val height = canvas.height.toFloat()
             val aspectRatio = height / width
 
-            // Aspect-aware horizontal padding, but never let the 7-day month
-            // grid exceed its cell on narrow 720px-class phones.
-            val paddingRatio = when {
-                aspectRatio > 2.1f -> 0.12f
-                aspectRatio > 2.0f -> 0.15f
-                else -> 0.18f
-            }
-            val paddingX = maxOf(width * paddingRatio, systemSafeInsetLeft.toFloat(), systemSafeInsetRight.toFloat())
+            // All per-canvas (per-device) layout numbers — horizontal padding,
+            // vertical safe-top reservation, dot-gap ratio, dot-size cap, stats
+            // baseline — live in CalendarLayout so adding support for a new
+            // device class never requires edits down here.
+            val layout = CalendarLayout.compute(
+                widthPx = canvas.width,
+                heightPx = canvas.height,
+                topOffsetPx = topOffset,
+                bottomOffsetPx = bottomOffset,
+                systemSafeInsetTopPx = systemSafeInsetTop,
+                systemSafeInsetBottomPx = systemSafeInsetBottom,
+                systemSafeInsetLeftPx = systemSafeInsetLeft,
+                systemSafeInsetRightPx = systemSafeInsetRight,
+            )
+            val paddingX = layout.paddingXPx
             val availableWidth = width - 2 * paddingX
             val cellWidth = availableWidth / columns
-
-            // Live wallpapers draw behind the lockscreen clock/date. Reserve a
-            // stable top band similar to the reference generators; users can
-            // still nudge the grid with the vertical offset slider.
-            val safeTopRatio = when {
-                aspectRatio > 2.1f -> 0.28f
-                aspectRatio > 2.0f -> 0.25f
-                else -> 0.22f
-            }
-            val safeTop = maxOf(height * safeTopRatio, topOffset, systemSafeInsetTop.toFloat())
-
-            // Stats are anchored to a fixed position near the bottom edge — below the
-            // under-display fingerprint hint zone. This baseline is intentionally
-            // locked: the user's vertical-offset slider moves only the grid, not stats.
-            val safeBottom = maxOf(height * 0.06f, bottomOffset, systemSafeInsetBottom.toFloat())
-            val statsBottomBaseline = height - safeBottom * 0.55f
-
+            val safeTop = layout.safeTopPx
+            val statsBottomBaseline = layout.statsBottomBaselinePx
+            val dotGapRatio = layout.dotGapRatio
             val showStats = settings.calendarViewSettings.showYearStats
-
-            // Provisional dot size to drive label/stats font sizes (final after layout)
-            val dotGapRatio = when {
-                width <= 720f -> 0.55f
-                width <= 900f -> 0.62f
-                else -> 0.70f
-            }
             val maxDotSizeH = cellWidth / (7f + 6f * dotGapRatio)
             // Grid area: between safeTop and (stats top - margin). The number of
             // stats lines is 1 (year stats) + upcomingGoalCount countdown lines.
@@ -617,7 +603,7 @@ class LifeDotsWallpaperService : WallpaperService() {
             val totalDotUnitsForFit = gridUnits + statsExtraDotUnits
             val maxDotSizeV = (statsBottomBaseline - safeTop) / totalDotUnitsForFit
             // Hard cap at 20px to match references' minimalist aesthetic.
-            val dotSize = min(maxDotSizeH, maxDotSizeV).coerceIn(2f, 20f)
+            val dotSize = min(maxDotSizeH, maxDotSizeV).coerceIn(2f, layout.dotSizeCapPx)
 
             val dotGap = dotSize * dotGapRatio
             val labelSize = dotSize * 1.6f
