@@ -60,8 +60,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-private const val VERTICAL_OFFSET_BASELINE = 19f
-
 class LifeDotsWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine {
@@ -325,11 +323,7 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // Calculate offset based on screen size
             val offsetX = canvas.width * (positionSettings.horizontalOffset / 100f)
-            // Vertical baseline: slider "0%" = calendar at +19% offset, the position
-            // that fits under most lockscreen clocks. Users can drag away from 0
-            // to fine-tune. Migration v3 in LifeDotsPreferences re-baselines any
-            // saved value so existing users see the same visual position.
-            val offsetY = canvas.height * ((positionSettings.verticalOffset + VERTICAL_OFFSET_BASELINE) / 100f)
+            val offsetY = canvas.height * (positionSettings.verticalOffset / 100f)
 
             // CALENDAR view manages its own transforms internally so its bottom stats
             // can be anchored to the screen regardless of the user's vertical offset.
@@ -677,11 +671,7 @@ class LifeDotsWallpaperService : WallpaperService() {
             // anchored to the bottom of the screen no matter how the user moves the grid.
             canvas.save()
             val offsetX = canvas.width * (positionSettings.horizontalOffset / 100f)
-            // Vertical baseline: slider "0%" = calendar at +19% offset, the position
-            // that fits under most lockscreen clocks. Users can drag away from 0
-            // to fine-tune. Migration v3 in LifeDotsPreferences re-baselines any
-            // saved value so existing users see the same visual position.
-            val offsetY = canvas.height * ((positionSettings.verticalOffset + VERTICAL_OFFSET_BASELINE) / 100f)
+            val offsetY = canvas.height * (positionSettings.verticalOffset / 100f)
             canvas.translate(offsetX, offsetY)
             canvas.scale(
                 positionSettings.scale,

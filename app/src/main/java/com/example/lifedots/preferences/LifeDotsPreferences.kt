@@ -120,7 +120,7 @@ data class CustomColors(
 // Custom Positioning & Scaling
 data class PositionSettings(
     val horizontalOffset: Float = 0f,  // -50 to 50 percent
-    val verticalOffset: Float = 0f,    // -50 to 50 percent; fresh installs start centered
+    val verticalOffset: Float = 18f,   // -50 to 50 percent; 18% sits just under most lockscreen clocks
     val scale: Float = 1.0f            // 0.5 to 1.5
 )
 
@@ -290,18 +290,14 @@ class LifeDotsPreferences(context: Context) {
             editor.remove(KEY_CALENDAR_EVENT_DAY)
             editor.remove(KEY_CALENDAR_EVENT_COLOR)
         }
-        if (stored < 4) {
-            // v4: vertical-offset slider re-baselined. "0%" on the slider now
-            // represents the position that used to require +19% — the spot that
-            // fits below most lockscreen clocks. The wallpaper renderer adds
-            // VERTICAL_OFFSET_BASELINE (19) back in at draw time. To keep
-            // existing users at the same visual position, subtract 19 from
-            // anything they had saved (negative values are fine; slider range
-            // is -50..50).
-            if (prefs.contains(KEY_VERTICAL_OFFSET)) {
-                val old = prefs.getFloat(KEY_VERTICAL_OFFSET, 0f)
-                editor.putFloat(KEY_VERTICAL_OFFSET, old - 19f)
-            }
+        if (stored < 5) {
+            // v5: re-baseline thrash undone. Slider math is back to its plain
+            // meaning (slider 0% = 0% canvas-height translate). To give every
+            // existing user — regardless of where they were before, including
+            // the v4 -19% migration mess — a sensible starting point under most
+            // lockscreen clocks, force-write 18% as the saved value. Anyone who
+            // wants a different position drags from there.
+            editor.putFloat(KEY_VERTICAL_OFFSET, 18f)
         }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
@@ -375,7 +371,7 @@ class LifeDotsPreferences(context: Context) {
         // Position Settings
         val positionSettings = PositionSettings(
             horizontalOffset = prefs.getFloat(KEY_HORIZONTAL_OFFSET, 0f),
-            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 0f),
+            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 18f),
             scale = prefs.getFloat(KEY_SCALE, 1.0f)
         )
 
@@ -856,7 +852,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 4
+        private const val CURRENT_MIGRATION_VERSION = 5
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
