@@ -962,8 +962,9 @@ class LifeDotsPreferences(context: Context) {
 
     fun setUmrBirthday(epochMs: Long) {
         prefs.edit().putLong(KEY_UMR_BIRTHDAY_MS, epochMs).apply()
-        _settingsFlow.value = _settingsFlow.value.copy(
-            umrSettings = _settingsFlow.value.umrSettings.copy(birthdayEpochMs = epochMs)
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(birthdayEpochMs = epochMs)
         )
         notifyWallpaperChanged()
     }
