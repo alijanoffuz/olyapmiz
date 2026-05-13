@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -134,12 +136,18 @@ class SettingsActivity : ComponentActivity() {
 fun SettingsScreen(
     preferences: LifeDotsPreferences,
     modifier: Modifier = Modifier,
-    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    snackbarHostState: SnackbarHostState,
 ) {
     val settings by preferences.settingsFlow.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val showBirthdayDialog = remember { mutableStateOf(false) }
+
+    LaunchedEffect(settings.topViewMode) {
+        if (settings.topViewMode == TopViewMode.YIL) {
+            showBirthdayDialog.value = false
+        }
+    }
 
     var showBgColorPicker by remember { mutableStateOf(false) }
     var showFilledColorPicker by remember { mutableStateOf(false) }
@@ -422,9 +430,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
         if (settings.topViewMode == TopViewMode.YIL) {
+            Spacer(modifier = Modifier.height(24.dp))
+
         // View Mode section (Yil-only)
         SettingsSection(title = "View Mode") {
             Surface(
@@ -1029,8 +1037,9 @@ private fun IntervalChips(currentMs: Long, onPick: (Long) -> Unit) {
         "30m" to 1_800_000L,
         "1h" to 3_600_000L,
     )
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         options.forEach { (label, ms) ->
