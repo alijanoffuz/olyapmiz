@@ -17,6 +17,7 @@ import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.renderscript.Allocation
@@ -25,6 +26,7 @@ import android.renderscript.RenderScript
 import android.renderscript.ScriptIntrinsicBlur
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import android.view.WindowInsets
 import com.example.lifedots.receiver.DateChangeReceiver
 import com.example.lifedots.service.KeepAliveService
 import com.example.lifedots.preferences.AnimationSettings
@@ -125,6 +127,11 @@ class LifeDotsWallpaperService : WallpaperService() {
         private var cachedScreenWidth = 0
         private var cachedScreenHeight = 0
 
+        private var systemSafeInsetTop = 0
+        private var systemSafeInsetBottom = 0
+        private var systemSafeInsetLeft = 0
+        private var systemSafeInsetRight = 0
+
         // Month names for labels
         private val monthNames = arrayOf(
             "January", "February", "March", "April", "May", "June",
@@ -192,6 +199,28 @@ class LifeDotsWallpaperService : WallpaperService() {
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
+            draw()
+        }
+
+        override fun onApplyWindowInsets(insets: WindowInsets) {
+            super.onApplyWindowInsets(insets)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val systemBars = insets.getInsets(WindowInsets.Type.systemBars())
+                val cutoutInsets = insets.getInsets(WindowInsets.Type.displayCutout())
+                systemSafeInsetTop = maxOf(systemBars.top, cutoutInsets.top)
+                systemSafeInsetBottom = maxOf(systemBars.bottom, cutoutInsets.bottom)
+                systemSafeInsetLeft = maxOf(systemBars.left, cutoutInsets.left)
+                systemSafeInsetRight = maxOf(systemBars.right, cutoutInsets.right)
+            } else {
+                @Suppress("DEPRECATION")
+                systemSafeInsetTop = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                systemSafeInsetBottom = insets.systemWindowInsetBottom
+                @Suppress("DEPRECATION")
+                systemSafeInsetLeft = insets.systemWindowInsetLeft
+                @Suppress("DEPRECATION")
+                systemSafeInsetRight = insets.systemWindowInsetRight
+            }
             draw()
         }
 
@@ -540,43 +569,56 @@ class LifeDotsWallpaperService : WallpaperService() {
             val height = canvas.height.toFloat()
             val aspectRatio = height / width
 
-            // Aspect-aware horizontal padding (matches Remainders refs exactly)
+            // Aspect-aware horizontal padding, but never let the 7-day month
+            // grid exceed its cell on narrow 720px-class phones.
             val paddingRatio = when {
                 aspectRatio > 2.1f -> 0.12f
                 aspectRatio > 2.0f -> 0.15f
                 else -> 0.18f
             }
-            val paddingX = width * paddingRatio
+            val paddingX = maxOf(width * paddingRatio, systemSafeInsetLeft.toFloat(), systemSafeInsetRight.toFloat())
             val availableWidth = width - 2 * paddingX
             val cellWidth = availableWidth / columns
 
-            // Pull the calendar up so it sits closer to the date row, but keep a small
-            // gap so it doesn't overlap the lockscreen clock/date.
-            val safeTopRatio = if (aspectRatio > 2.0f) 0.10f else 0.13f
-            val safeTop = (height * safeTopRatio).coerceAtLeast(topOffset)
+            // Live wallpapers draw behind the lockscreen clock/date. Reserve a
+            // stable top band similar to the reference generators; users can
+            // still nudge the grid with the vertical offset slider.
+            val safeTopRatio = when {
+                aspectRatio > 2.1f -> 0.28f
+                aspectRatio > 2.0f -> 0.25f
+                else -> 0.22f
+            }
+            val safeTop = maxOf(height * safeTopRatio, topOffset, systemSafeInsetTop.toFloat())
 
             // Stats are anchored to a fixed position near the bottom edge — below the
             // under-display fingerprint hint zone. This baseline is intentionally
             // locked: the user's vertical-offset slider moves only the grid, not stats.
-            val statsBottomBaseline = height * 0.965f
+            val safeBottom = maxOf(height * 0.06f, bottomOffset, systemSafeInsetBottom.toFloat())
+            val statsBottomBaseline = height - safeBottom * 0.55f
 
             val showStats = settings.calendarViewSettings.showYearStats
 
             // Provisional dot size to drive label/stats font sizes (final after layout)
-            val maxDotSizeH = cellWidth / 8f
+            val dotGapRatio = when {
+                width <= 720f -> 0.55f
+                width <= 900f -> 0.62f
+                else -> 0.70f
+            }
+            val maxDotSizeH = cellWidth / (7f + 6f * dotGapRatio)
             // Grid area: between safeTop and (stats top - margin). The number of
             // stats lines is 1 (year stats) + upcomingGoalCount countdown lines.
             // Each extra line = 0.8d gap + 1.6d line height (in dotSize units).
             val statsExtraDotUnits = if (showStats) {
                 4.8f + 1.6f + upcomingGoalCount * (0.8f + 1.6f)
             } else 0f
-            val gridUnits = 12.1f * rows + 1.6f * (rows - 1)
+            val monthBlockDotUnits = 2.6f + 6f + 5f * dotGapRatio
+            val gridUnits = monthBlockDotUnits * rows + 1.6f * (rows - 1)
             val totalDotUnitsForFit = gridUnits + statsExtraDotUnits
             val maxDotSizeV = (statsBottomBaseline - safeTop) / totalDotUnitsForFit
-            // Hard cap at 20px to match references' minimalist aesthetic
-            val dotSize = min(maxDotSizeH, maxDotSizeV).coerceAtMost(20f)
+            // Hard cap at 20px to match references' minimalist aesthetic.
+            val dotSize = min(maxDotSizeH, maxDotSizeV).coerceIn(2f, 20f)
 
-            val dotGap = dotSize * 0.7f
+            val dotGap = dotSize * dotGapRatio
             val labelSize = dotSize * 1.6f
             val labelMarginBottom = dotSize * 1.0f
             val blockHeight = labelSize + labelMarginBottom + 6 * dotSize + 5 * dotGap
@@ -782,12 +824,12 @@ class LifeDotsWallpaperService : WallpaperService() {
             if (glow) {
                 tintedGlowPaint.color = color
                 tintedGlowPaint.alpha = 90
-                tintedGlowPaint.maskFilter = BlurMaskFilter(radius * 2.5f, BlurMaskFilter.Blur.NORMAL)
-                canvas.drawCircle(cx, cy, radius * 2.2f, tintedGlowPaint)
+                tintedGlowPaint.maskFilter = BlurMaskFilter(radius * 1.8f, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawCircle(cx, cy, radius * 1.45f, tintedGlowPaint)
 
                 tintedGlowPaint.alpha = 140
-                tintedGlowPaint.maskFilter = BlurMaskFilter(radius * 1.2f, BlurMaskFilter.Blur.NORMAL)
-                canvas.drawCircle(cx, cy, radius * 1.5f, tintedGlowPaint)
+                tintedGlowPaint.maskFilter = BlurMaskFilter(radius * 0.9f, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawCircle(cx, cy, radius * 1.15f, tintedGlowPaint)
             }
             tintedDotPaint.color = color
             tintedDotPaint.alpha = 255

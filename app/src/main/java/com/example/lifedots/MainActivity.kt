@@ -1,11 +1,13 @@
 package com.example.lifedots
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.WallpaperManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,8 +16,10 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +67,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.core.content.ContextCompat
 import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.ui.theme.LifeDotsTheme
 import com.example.lifedots.updater.UpdateChecker
@@ -71,6 +76,7 @@ import com.example.lifedots.updater.UpdateInstaller
 import com.example.lifedots.updater.UpdateNotifier
 import com.example.lifedots.wallpaper.LifeDotsWallpaperService
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Calendar
 
 class MainActivity : ComponentActivity() {
@@ -154,6 +160,13 @@ class MainActivity : ComponentActivity() {
         val component = ComponentName(this@MainActivity, LifeDotsWallpaperService::class.java)
         Log.i("LifeDots", "openWallpaperPicker: trying CHANGE_LIVE_WALLPAPER for $component")
 
+        if (prefersGenericLiveWallpaperChooser()) {
+            val chooser = Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (tryStart(chooser, "OEM_LIVE_WALLPAPER_CHOOSER")) return
+        }
+
         // Primary path: ACTION_CHANGE_LIVE_WALLPAPER with the LifeDots component
         // pre-selected. NEW_TASK is required on Samsung/Android 15 for cross-process
         // wallpaper picker launches; without it the system silently rejects the start.
@@ -164,7 +177,7 @@ class MainActivity : ComponentActivity() {
         if (tryStart(primary, "CHANGE_LIVE_WALLPAPER")) return
 
         // Fallback 1: generic live-wallpaper chooser (no preselection)
-        val chooser = Intent("android.service.wallpaper.LIVE_WALLPAPER_CHOOSER").apply {
+        val chooser = Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         if (tryStart(chooser, "LIVE_WALLPAPER_CHOOSER")) return
@@ -180,6 +193,15 @@ class MainActivity : ComponentActivity() {
             "Couldn't open wallpaper picker. Open Settings → Wallpaper → Live wallpapers and pick LifeDots.",
             Toast.LENGTH_LONG
         ).show()
+    }
+
+    private fun prefersGenericLiveWallpaperChooser(): Boolean {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        return manufacturer.contains("honor") ||
+            brand.contains("honor") ||
+            manufacturer.contains("huawei") ||
+            brand.contains("huawei")
     }
 
     private fun tryStart(intent: Intent, label: String): Boolean {
@@ -215,7 +237,7 @@ fun OnboardingScreen(
     onOpenSettings: () -> Unit,
     onAllowBackground: () -> Unit,
     onOpenSamsungNeverSleeping: () -> Unit,
-    onInstallApk: (java.io.File) -> UpdateInstaller.LaunchResult,
+    onInstallApk: (File) -> UpdateInstaller.LaunchResult,
     onLaunchSelfUninstall: () -> Unit,
     autoCheckOnLaunch: Boolean,
     triggerFromNotification: Boolean,
@@ -226,23 +248,70 @@ fun OnboardingScreen(
     val dayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
     val totalDays = remember { Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_YEAR) }
 
-    // Re-check battery optimization status every time the user comes back from
-    // the system settings screen, so the card disappears once they tap "Allow".
     var batteryOptimized by remember { mutableStateOf(isBatteryOptimized(context)) }
+    var notificationsAllowed by remember { mutableStateOf(hasPostNotificationsPermission(context)) }
+    var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
+    var pendingInstallApk by remember { mutableStateOf<File?>(null) }
+    var pendingInstallInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsAllowed = granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+    }
+
+    fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            notificationsAllowed = true
+        }
+    }
+
+    fun handleInstall(apk: File) {
+        val info = when (val state = updateState) {
+            is UpdateUiState.Ready -> state.info
+            is UpdateUiState.InstallPermissionRequired -> state.info
+            else -> pendingInstallInfo
+        }
+        when (onInstallApk(apk)) {
+            UpdateInstaller.LaunchResult.Started -> {
+                pendingInstallApk = null
+                pendingInstallInfo = null
+            }
+            UpdateInstaller.LaunchResult.NeedsUnknownSources -> {
+                pendingInstallApk = apk
+                pendingInstallInfo = info
+                if (info != null) {
+                    updateState = UpdateUiState.InstallPermissionRequired(info, apk)
+                }
+            }
+            UpdateInstaller.LaunchResult.SignatureMismatch -> {
+                pendingInstallApk = null
+                pendingInstallInfo = null
+                if (info != null) {
+                    updateState = UpdateUiState.SignatureMismatch(info)
+                }
+            }
+        }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, pendingInstallApk) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 batteryOptimized = isBatteryOptimized(context)
+                notificationsAllowed = hasPostNotificationsPermission(context)
+                val apk = pendingInstallApk
+                if (apk != null && context.packageManager.canRequestPackageInstalls()) {
+                    handleInstall(apk)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val isSamsung = remember { Build.MANUFACTURER.equals("samsung", ignoreCase = true) }
-
-    // Update state machine: Idle → Checking → (UpToDate | Available | Downloading | Ready | Error)
-    var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
 
     fun checkForUpdate(silent: Boolean) {
         if (updateState is UpdateUiState.Checking || updateState is UpdateUiState.Downloading) return
@@ -263,6 +332,8 @@ fun OnboardingScreen(
     }
 
     fun startDownload(info: UpdateInfo) {
+        pendingInstallApk = null
+        pendingInstallInfo = null
         updateState = UpdateUiState.Downloading(info, 0f)
         scope.launch {
             val installer = UpdateInstaller(context)
@@ -270,8 +341,13 @@ fun OnboardingScreen(
                 val progress = if (total > 0) downloaded.toFloat() / total else 0f
                 updateState = UpdateUiState.Downloading(info, progress)
             }
-            updateState = if (apk != null) UpdateUiState.Ready(info, apk)
-                          else UpdateUiState.Error("Download failed")
+            if (apk != null) {
+                pendingInstallApk = apk
+                pendingInstallInfo = info
+                updateState = UpdateUiState.Ready(info, apk)
+            } else {
+                updateState = UpdateUiState.Error("Download failed")
+            }
         }
     }
 
@@ -353,16 +429,15 @@ fun OnboardingScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // "Keep Always Running" — hides itself the moment the user grants the
-        // battery-optimization exemption (the primary, OS-enforced layer of
-        // protection). Samsung's "Never sleeping apps" is a nice-to-have but
-        // there's no API to detect whether it's been configured, so we don't
-        // nag about it forever — the README still documents the manual step.
-        if (batteryOptimized) {
+        // "Keep Always Running" stays visible until the OS-level permissions
+        // needed by the foreground keep-alive/update notifications are granted.
+        if (batteryOptimized || !notificationsAllowed) {
             KeepAlwaysRunningCard(
-                showBatteryButton = true,
+                showBatteryButton = batteryOptimized,
+                showNotificationButton = !notificationsAllowed,
                 showSamsungButton = isSamsung,
                 onAllowBackground = onAllowBackground,
+                onAllowNotifications = { requestNotificationPermission() },
                 onOpenSamsungNeverSleeping = onOpenSamsungNeverSleeping
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -373,19 +448,7 @@ fun OnboardingScreen(
         UpdateCard(
             state = updateState,
             onDownload = { info -> startDownload(info) },
-            onInstall = { apk ->
-                val result = onInstallApk(apk)
-                if (result == UpdateInstaller.LaunchResult.SignatureMismatch) {
-                    // The downloaded APK is signed differently from what's
-                    // installed (typically: user is on a debug or sideloaded
-                    // build, now upgrading to a release-signed build). The
-                    // installer would refuse — surface the manual steps.
-                    val info = (updateState as? UpdateUiState.Ready)?.info
-                    if (info != null) {
-                        updateState = UpdateUiState.SignatureMismatch(info)
-                    }
-                }
-            },
+            onInstall = { apk -> handleInstall(apk) },
             onLaunchSelfUninstall = onLaunchSelfUninstall,
             onDismiss = { updateState = UpdateUiState.Idle }
         )
@@ -456,11 +519,21 @@ private fun isBatteryOptimized(context: Context): Boolean {
     return !pm.isIgnoringBatteryOptimizations(context.packageName)
 }
 
+private fun hasPostNotificationsPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+}
+
 @Composable
 private fun KeepAlwaysRunningCard(
     showBatteryButton: Boolean,
+    showNotificationButton: Boolean,
     showSamsungButton: Boolean,
     onAllowBackground: () -> Unit,
+    onAllowNotifications: () -> Unit,
     onOpenSamsungNeverSleeping: () -> Unit
 ) {
     Card(
@@ -492,7 +565,18 @@ private fun KeepAlwaysRunningCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("1. Allow background activity", fontSize = 14.sp)
+                    Text("Allow background activity", fontSize = 14.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            if (showNotificationButton) {
+                OutlinedButton(
+                    onClick = onAllowNotifications,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Allow notifications", fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -503,7 +587,7 @@ private fun KeepAlwaysRunningCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("2. Add to 'Never sleeping apps'", fontSize = 14.sp)
+                    Text("Add to 'Never sleeping apps'", fontSize = 14.sp)
                 }
             }
         }
@@ -516,7 +600,8 @@ sealed interface UpdateUiState {
     data class UpToDate(val version: String) : UpdateUiState
     data class Available(val info: UpdateInfo) : UpdateUiState
     data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateUiState
-    data class Ready(val info: UpdateInfo, val apk: java.io.File) : UpdateUiState
+    data class Ready(val info: UpdateInfo, val apk: File) : UpdateUiState
+    data class InstallPermissionRequired(val info: UpdateInfo, val apk: File) : UpdateUiState
     data class SignatureMismatch(val info: UpdateInfo) : UpdateUiState
     data class Error(val message: String) : UpdateUiState
 }
@@ -525,7 +610,7 @@ sealed interface UpdateUiState {
 private fun UpdateCard(
     state: UpdateUiState,
     onDownload: (UpdateInfo) -> Unit,
-    onInstall: (java.io.File) -> Unit,
+    onInstall: (File) -> Unit,
     onLaunchSelfUninstall: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -599,6 +684,29 @@ private fun UpdateCard(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Install now", fontSize = 14.sp)
+                    }
+                }
+                is UpdateUiState.InstallPermissionRequired -> {
+                    Text(
+                        "Install permission needed",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Allow O'lyapmiz to install downloaded updates. The installer will continue when you return.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { onInstall(state.apk) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Open install permission", fontSize = 14.sp)
                     }
                 }
                 is UpdateUiState.UpToDate -> {

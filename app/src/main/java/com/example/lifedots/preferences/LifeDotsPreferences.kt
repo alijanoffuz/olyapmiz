@@ -120,7 +120,7 @@ data class CustomColors(
 // Custom Positioning & Scaling
 data class PositionSettings(
     val horizontalOffset: Float = 0f,  // -50 to 50 percent
-    val verticalOffset: Float = 0f,    // -50 to 50 percent
+    val verticalOffset: Float = 18f,   // -50 to 50 percent; default 18% feels right under most lockscreen clocks
     val scale: Float = 1.0f            // 0.5 to 1.5
 )
 
@@ -250,21 +250,15 @@ class LifeDotsPreferences(context: Context) {
     /**
      * One-time rebrand migrations for users upgrading from the upstream LifeDots
      * fork (or any earlier build before the O'lyapmiz rebrand). These migrations
-     * fix the "old continuous-grid view sticks around on Samsung A11" symptom:
-     * the upstream default was CONTINUOUS, so users who installed it previously
-     * have view_mode=CONTINUOUS persisted in their SharedPreferences. Without
-     * this migration, our new CALENDAR default never wins.
+     * preserve user settings while cleaning up keys that no longer exist.
      */
     private fun runMigrationsIfNeeded() {
         val stored = prefs.getInt(KEY_MIGRATION_VERSION, 0)
         if (stored >= CURRENT_MIGRATION_VERSION) return
         val editor = prefs.edit()
-        if (stored < 1) {
-            // v1: reset view mode + theme to the O'lyapmiz defaults so anyone
-            // upgrading from the upstream fork sees the calendar view instead
-            // of the legacy 365-dot continuous grid.
-            editor.remove(KEY_VIEW_MODE)
-        }
+        // v1 used to force-clear KEY_VIEW_MODE. That made some upgrades lose
+        // intentional Monthly/Continuous selections. Keep saved values now;
+        // fresh installs with no key already use CALENDAR below.
         if (stored < 2) {
             // v2: the Calendar's single milestone event has been replaced by
             // the general Goal countdown. If the user had an event configured,
@@ -368,7 +362,7 @@ class LifeDotsPreferences(context: Context) {
         // Position Settings
         val positionSettings = PositionSettings(
             horizontalOffset = prefs.getFloat(KEY_HORIZONTAL_OFFSET, 0f),
-            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 0f),
+            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 18f),
             scale = prefs.getFloat(KEY_SCALE, 1.0f)
         )
 
@@ -849,7 +843,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 2
+        private const val CURRENT_MIGRATION_VERSION = 3
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"

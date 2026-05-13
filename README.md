@@ -27,10 +27,10 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 - **Stats line** — `Xd left · X%` and an optional event countdown anchored to the bottom of the screen, independent of where you place the calendar grid.
 - **Themes** — Light, Dark, AMOLED, or a fully custom palette (background, filled dots, empty dots, today).
 - **Dot styles** — Flat / Gradient / Outlined / Soft Glow / Neon / Embossed, in 5 sizes and 4 grid densities.
-- **Optional milestone event** — Pick any date and a label (e.g. "birthday", "graduation"); the calendar will tint that week and show a countdown.
+- **Goal countdowns** — Pick one or more dates and labels (e.g. "birthday", "graduation"); the calendar tints those days and shows countdowns.
 - **Position & scale controls** — Move the grid up/down/left/right; scale it. Stats stay anchored to the bottom regardless.
 - **Daily auto-update** — A 4-layer safety net (visibility-change redraw, midnight handler, `ACTION_DATE_CHANGED` broadcast, and an `AlarmManager` daily tick) guarantees the dot for today is correct, even on aggressive battery-saver profiles.
-- **Privacy** — No network calls. No telemetry. No accounts. Settings live in your phone's local `SharedPreferences`.
+- **Privacy** — No telemetry. No accounts. The only network call is the optional GitHub release check used by the in-app updater. Settings live in your phone's local `SharedPreferences`.
 
 ---
 
@@ -94,7 +94,7 @@ Tap **Customize** on the home screen to open the settings screen. From there:
 | View mode          | Calendar (default) / Monthly / Continuous |
 | Calendar layout    | Columns per row (2 / 3 / 4), Monday-first weeks, month labels |
 | Highlight today    | Toggle + color |
-| Milestone event    | Enable + date + label + color |
+| Goal countdown     | Add dates + labels + colors |
 | Position           | Move and scale the calendar grid (stats stay locked at the bottom) |
 | Background photo   | Optional, with blur and opacity |
 | Footer text        | Optional, with font size + alignment + color |
@@ -111,7 +111,7 @@ Tap **Customize** on the home screen to open the settings screen. From there:
 - **UI** — Jetpack Compose for the onboarding + settings activities; Android Canvas API for the wallpaper rendering
 - **State** — `SharedPreferences` + `StateFlow`; no network, no database
 - **Min SDK** — 26 (Android 8.0); **Target SDK** — 35 (Android 15)
-- **Permissions** — `READ_MEDIA_IMAGES` (for the optional background photo), `RECEIVE_BOOT_COMPLETED` (to re-arm the daily refresh alarm after a reboot)
+- **Permissions** — `READ_MEDIA_IMAGES` (for the optional background photo), `RECEIVE_BOOT_COMPLETED` (to re-arm the daily refresh alarm after a reboot), `POST_NOTIFICATIONS` (for update and keep-alive notifications), and `REQUEST_INSTALL_PACKAGES` (for the in-app updater)
 - **License** — MIT, see [LICENSE](LICENSE)
 
 ### Project layout

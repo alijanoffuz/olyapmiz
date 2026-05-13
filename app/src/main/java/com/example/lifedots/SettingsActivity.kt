@@ -378,6 +378,105 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        SettingsSection(title = "View Mode") {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ViewModeOption(
+                            label = "Year",
+                            mode = ViewMode.CALENDAR,
+                            isSelected = settings.viewModeSettings.mode == ViewMode.CALENDAR,
+                            onClick = { preferences.setViewMode(ViewMode.CALENDAR) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ViewModeOption(
+                            label = "Monthly",
+                            mode = ViewMode.MONTHLY,
+                            isSelected = settings.viewModeSettings.mode == ViewMode.MONTHLY,
+                            onClick = { preferences.setViewMode(ViewMode.MONTHLY) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ViewModeOption(
+                            label = "365",
+                            mode = ViewMode.CONTINUOUS,
+                            isSelected = settings.viewModeSettings.mode == ViewMode.CONTINUOUS,
+                            onClick = { preferences.setViewMode(ViewMode.CONTINUOUS) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = settings.viewModeSettings.mode == ViewMode.CALENDAR,
+                        enter = expandVertically(),
+                        exit = shrinkVertically()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Calendar Columns",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CalendarColumnsOption(
+                                    label = "2 x 6",
+                                    columns = 2,
+                                    isSelected = settings.calendarViewSettings.columnsPerRow == 2,
+                                    onClick = { preferences.setCalendarColumns(2) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                CalendarColumnsOption(
+                                    label = "3 x 4",
+                                    columns = 3,
+                                    isSelected = settings.calendarViewSettings.columnsPerRow == 3,
+                                    onClick = { preferences.setCalendarColumns(3) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                CalendarColumnsOption(
+                                    label = "4 x 3",
+                                    columns = 4,
+                                    isSelected = settings.calendarViewSettings.columnsPerRow == 4,
+                                    onClick = { preferences.setCalendarColumns(4) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Month Labels",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Switch(
+                                    checked = settings.viewModeSettings.showMonthLabels,
+                                    onCheckedChange = { preferences.setShowMonthLabels(it) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         // ===== Feature 2: Footer Text Section =====
         SettingsSection(title = "Footer Text") {
             Surface(
