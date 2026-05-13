@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import com.example.lifedots.ui.theme.BrandColors
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,7 @@ fun ModeTogglePill(
             .fillMaxWidth()
             .height(54.dp),
         shape = RoundedCornerShape(27.dp),
-        color = Color(0xFFEDECF1),       // soft lavender-grey, matches reference
+        color = BrandColors.InkBlackElevated,    // raised black pill background
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -68,8 +69,8 @@ private fun PillSide(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(24.dp)
-    val bg = if (selected) Color.White else Color.Transparent
-    val textColor = if (selected) Color.Black else Color(0xFF8E8C9A)
+    val bg = if (selected) BrandColors.AmberGold else Color.Transparent
+    val textColor = if (selected) BrandColors.InkBlack else BrandColors.GoldenMuted
     val textWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
 
     Box(
