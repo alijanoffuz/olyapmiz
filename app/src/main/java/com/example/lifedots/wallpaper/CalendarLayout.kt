@@ -140,12 +140,18 @@ data class CalendarLayout(
             val dotSizeCapPx = 20f
 
             // Inter-month horizontal gap, as a multiplier on dot size.
-            // 1.5 produces a clearly visible gap between adjacent months
-            // on every screen we tested without making the months feel
-            // dis-connected. Smaller phones still get a real gap because
-            // dot size shrinks proportionally (see renderer's H-budget
-            // solver), so the dp/px of the gap scales too.
-            val monthMarginRatio = 1.5f
+            // Scales with absolute canvas width so wider phones get more
+            // breathing room between month columns and narrower phones
+            // tighten up (otherwise dotSize would shrink past readable
+            // on a 720-class screen). Linear from 1.0 at 600px wide to
+            // 2.0 at 1200px+ wide, clamped to that band.
+            //
+            // Sample devices:
+            //   Samsung A11 (720 px wide)   → ratio 1.20 → ~20 px gap
+            //   Galaxy A35 / A36 / S21+ (1080)  → ratio 1.80 → ~36 px gap
+            //   Galaxy Tab / large foldable (≥1200) → ratio 2.00 → ~40 px gap
+            val monthMarginRatio =
+                (widthPx / 600f).coerceIn(1.0f, 2.0f)
 
             return CalendarLayout(
                 paddingXPx = paddingXPx,
