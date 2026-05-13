@@ -86,14 +86,14 @@ class AutoSwitchRotator(
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pi = PendingIntent.getBroadcast(context, ALARM_REQUEST_CODE, intent, flags)
         try {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
-        } catch (e: SecurityException) {
-            // SCHEDULE_EXACT_ALARM permission denied — fall back to inexact.
-            try {
-                am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
-            } catch (e2: Exception) {
-                Log.w("LifeDots", "AutoSwitchRotator: failed to schedule alarm", e2)
-            }
+            // Inexact but Doze-friendly — no SCHEDULE_EXACT_ALARM permission needed.
+            // Drift is OK: for short test intervals (5s) the Handler path covers visible
+            // flips; for long intervals (30m, 1h) a few minutes of drift is invisible to
+            // the user. The wall-clock formula gets the mode right on the next draw
+            // regardless.
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+        } catch (e: Exception) {
+            Log.w("LifeDots", "AutoSwitchRotator: failed to schedule alarm", e)
         }
     }
 

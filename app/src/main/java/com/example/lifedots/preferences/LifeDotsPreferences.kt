@@ -266,8 +266,9 @@ fun currentEffectiveMode(now: Long, settings: WallpaperSettings): TopViewMode {
     if (settings.umrSettings.birthdayEpochMs == 0L) return TopViewMode.YIL
     val elapsed = now - auto.referenceMs
     val ticks = if (auto.intervalMs > 0L) elapsed / auto.intervalMs else 0L
+    val normalizedTicks = if (ticks < 0L) 0L else ticks   // clock-skew safety
     val startIsYil = auto.startMode == TopViewMode.YIL
-    val onStartSide = (ticks % 2L) == 0L
+    val onStartSide = (normalizedTicks % 2L) == 0L
     return when {
         onStartSide && startIsYil -> TopViewMode.YIL
         onStartSide && !startIsYil -> TopViewMode.UMR
@@ -969,7 +970,7 @@ class LifeDotsPreferences(context: Context) {
         notifyWallpaperChanged()
     }
 
-    private fun notifyWallpaperChanged() {
+    fun notifyWallpaperChanged() {
         wallpaperChangeListeners.forEach { it.invoke() }
     }
 

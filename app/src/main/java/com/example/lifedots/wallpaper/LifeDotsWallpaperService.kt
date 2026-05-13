@@ -242,6 +242,7 @@ class LifeDotsWallpaperService : WallpaperService() {
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
+            autoSwitchRotator.setVisible(false)
             super.onSurfaceDestroyed(holder)
             visible = false
             handler.removeCallbacksAndMessages(null)
@@ -612,12 +613,23 @@ class LifeDotsWallpaperService : WallpaperService() {
             )
             val paddingX = layout.paddingXPx
             val availableWidth = width - 2 * paddingX
-            val cellWidth = availableWidth / columns
             val safeTop = layout.safeTopPx
             val statsBottomBaseline = layout.statsBottomBaselinePx
             val dotGapRatio = layout.dotGapRatio
+            val monthMarginRatio = layout.monthMarginRatio
             val showStats = settings.calendarViewSettings.showYearStats
-            val maxDotSizeH = cellWidth / (7f + 6f * dotGapRatio)
+            // Solve for the largest dot size that fits `columns` month grids
+            // PLUS `columns - 1` inter-month gaps inside availableWidth.
+            // Each month grid is `7 × dotSize + 6 × dotSize × dotGapRatio`
+            // wide; each inter-month gap is `dotSize × monthMarginRatio`.
+            //
+            //   columns × dotSize × (7 + 6 × dotGapRatio) +
+            //     (columns - 1) × dotSize × monthMarginRatio  =  availableWidth
+            //
+            // Solving for dotSize:
+            val dotsPerCol = 7f + 6f * dotGapRatio
+            val maxDotSizeH =
+                availableWidth / (columns * dotsPerCol + (columns - 1) * monthMarginRatio)
             // Grid area: between safeTop and (stats top - margin). The number of
             // stats lines is 1 (year stats) + upcomingGoalCount countdown lines.
             // Each extra line = 0.8d gap + 1.6d line height (in dotSize units).
@@ -662,7 +674,15 @@ class LifeDotsWallpaperService : WallpaperService() {
                 safeTop + ((gridAreaHeight - totalGridHeight) / 2f).coerceAtLeast(0f)
 
             val dotGridWidth = 7 * dotSize + 6 * dotGap
-            val cellCenterOffset = (cellWidth - dotGridWidth) / 2
+            // Inter-month gap, scaled with dotSize. The same multiplier the
+            // H-budget solver used above; if dotSize was clamped down by
+            // dotSizeCapPx, monthMargin gets clamped along with it and any
+            // leftover availableWidth becomes extra centering padding (see
+            // gridLeftStart below) — calendar stays centered, gap stays
+            // visually consistent.
+            val monthMargin = dotSize * monthMarginRatio
+            val gridBlockWidth = columns * dotGridWidth + (columns - 1) * monthMargin
+            val gridLeftStart = paddingX + (availableWidth - gridBlockWidth) / 2
 
             val mondayFirst = settings.calendarViewSettings.mondayFirst
 
@@ -704,7 +724,7 @@ class LifeDotsWallpaperService : WallpaperService() {
                 val gridCol = monthIndex % columns
                 val gridRow = monthIndex / columns
 
-                val cellLeft = paddingX + gridCol * cellWidth + cellCenterOffset
+                val cellLeft = gridLeftStart + gridCol * (dotGridWidth + monthMargin)
                 val cellTop = gridStartY + gridRow * (blockHeight + rowGap)
 
                 // Draw month label (left-aligned to the dot grid)

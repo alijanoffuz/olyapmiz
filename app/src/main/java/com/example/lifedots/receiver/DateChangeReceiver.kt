@@ -27,8 +27,11 @@ class DateChangeReceiver : BroadcastReceiver() {
             "android.intent.action.QUICKBOOT_POWERON" -> {
                 Log.i("LifeDots", "Boot completed — scheduling daily refresh alarm")
                 scheduleDailyAlarm(context)
-                // Re-arm auto-switch by poking prefs so the engine reschedules its alarm.
-                pokeAutoSwitchRedraw(context)
+                // Note: auto-switch alarm is intentionally NOT re-armed here. The engine's
+                // process isn't necessarily running at BOOT_COMPLETED time, so the listener
+                // chain wouldn't reach the rotator. The rotator arms itself on the first
+                // onVisibilityChanged(true) after the user wakes the phone, which is when
+                // the mode actually matters.
             }
             ACTION_DAILY_TICK,
             Intent.ACTION_DATE_CHANGED,
@@ -46,16 +49,14 @@ class DateChangeReceiver : BroadcastReceiver() {
     }
 
     /**
-     * Force a wallpaper redraw and let the engine reschedule its next
-     * alarm — by toggling a no-op preference, we leverage the existing
-     * notifyWallpaperChanged() listener chain.
+     * Force a wallpaper redraw by directly notifying listeners — no disk write.
      */
     private fun pokeAutoSwitchRedraw(context: Context) {
         try {
             val prefs = LifeDotsPreferences.getInstance(context)
-            prefs.setHighlightToday(prefs.settings.highlightToday)
+            prefs.notifyWallpaperChanged()
         } catch (e: Exception) {
-            Log.e("LifeDots", "Failed to poke prefs on auto-switch tick", e)
+            Log.e("LifeDots", "Failed to notify wallpaper change", e)
         }
     }
 
