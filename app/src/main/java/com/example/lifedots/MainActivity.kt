@@ -20,6 +20,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,7 +70,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.example.lifedots.preferences.LifeDotsPreferences
+import com.example.lifedots.ui.components.rememberUxFeedback
+import com.example.lifedots.ui.theme.BrandColors
 import com.example.lifedots.ui.theme.LifeDotsTheme
 import com.example.lifedots.updater.UpdateChecker
 import com.example.lifedots.updater.UpdateInfo
@@ -91,9 +96,18 @@ class MainActivity : ComponentActivity() {
         // we don't accumulate them on disk.
         UpdateInstaller(this).cleanCache()
         enableEdgeToEdge()
+        // Yellow status bar with dark icons to match the amber-gold background.
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+        }
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.parseColor("#FFB300")
         setContent {
             LifeDotsTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    containerColor = BrandColors.AmberGold,
+                ) { innerPadding ->
                     val installer = remember { UpdateInstaller(this) }
                     OnboardingScreen(
                         onSetWallpaper = { openWallpaperPicker() },
@@ -363,10 +377,13 @@ fun OnboardingScreen(
         }
     }
 
+    val preferences = remember { LifeDotsPreferences.getInstance(context) }
+    val settings by preferences.settingsFlow.collectAsState()
+    val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -389,7 +406,7 @@ fun OnboardingScreen(
             text = stringResource(R.string.onboarding_title),
             fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
+            color = BrandColors.InkBlack
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -398,7 +415,7 @@ fun OnboardingScreen(
         Text(
             text = stringResource(R.string.onboarding_subtitle),
             fontSize = 18.sp,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+            color = BrandColors.DarkAmber
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -407,7 +424,7 @@ fun OnboardingScreen(
         Text(
             text = stringResource(R.string.onboarding_description),
             fontSize = 16.sp,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            color = BrandColors.DarkAmber,
             textAlign = TextAlign.Center,
             lineHeight = 24.sp
         )
@@ -419,12 +436,12 @@ fun OnboardingScreen(
             text = stringResource(R.string.days_passed, dayOfYear),
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.primary
+            color = BrandColors.InkBlack
         )
         Text(
             text = stringResource(R.string.days_remaining, totalDays - dayOfYear),
             fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+            color = BrandColors.DarkAmber
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -458,14 +475,22 @@ fun OnboardingScreen(
 
         // Buttons
         Button(
-            onClick = onSetWallpaper,
+            onClick = {
+                feedback.click()
+                onSetWallpaper()
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            )
+                containerColor = BrandColors.InkBlack,
+                contentColor = BrandColors.AmberGold,
+            ),
+            elevation = ButtonDefaults.buttonElevation(
+                defaultElevation = 4.dp,
+                pressedElevation = 8.dp,
+            ),
         ) {
             Text(
                 text = stringResource(R.string.set_wallpaper),
@@ -477,11 +502,18 @@ fun OnboardingScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedButton(
-            onClick = onOpenSettings,
+            onClick = {
+                feedback.click()
+                onOpenSettings()
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(2.dp, BrandColors.InkBlack),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = BrandColors.InkBlack,
+            ),
         ) {
             Text(
                 text = stringResource(R.string.open_settings),
@@ -496,11 +528,18 @@ fun OnboardingScreen(
         // (was a text button at the bottom, which kept falling below the fold
         // on small phones like Samsung A11).
         OutlinedButton(
-            onClick = { checkForUpdate(silent = false) },
+            onClick = {
+                feedback.click()
+                checkForUpdate(silent = false)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(2.dp, BrandColors.InkBlack),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = BrandColors.InkBlack,
+            ),
             enabled = updateState !is UpdateUiState.Checking &&
                       updateState !is UpdateUiState.Downloading
         ) {
@@ -540,7 +579,7 @@ private fun KeepAlwaysRunningCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = BrandColors.InkBlack
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -548,13 +587,13 @@ private fun KeepAlwaysRunningCard(
                 text = "Keep wallpaper always running",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = BrandColors.AmberGold
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "Samsung and Xiaomi can freeze background apps. Allow these so the calendar doesn't disappear from your lock screen.",
                 fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                color = BrandColors.OffWhite,
                 lineHeight = 18.sp
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -563,7 +602,11 @@ private fun KeepAlwaysRunningCard(
                 OutlinedButton(
                     onClick = onAllowBackground,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, BrandColors.AmberGold),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = BrandColors.AmberGold,
+                    ),
                 ) {
                     Text("Allow background activity", fontSize = 14.sp)
                 }
@@ -574,7 +617,11 @@ private fun KeepAlwaysRunningCard(
                 OutlinedButton(
                     onClick = onAllowNotifications,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, BrandColors.AmberGold),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = BrandColors.AmberGold,
+                    ),
                 ) {
                     Text("Allow notifications", fontSize = 14.sp)
                 }
@@ -585,7 +632,11 @@ private fun KeepAlwaysRunningCard(
                 OutlinedButton(
                     onClick = onOpenSamsungNeverSleeping,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, BrandColors.AmberGold),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = BrandColors.AmberGold,
+                    ),
                 ) {
                     Text("Add to 'Never sleeping apps'", fontSize = 14.sp)
                 }
@@ -619,7 +670,7 @@ private fun UpdateCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = BrandColors.InkBlack
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -629,14 +680,14 @@ private fun UpdateCard(
                         "Update available: v${state.info.versionName}",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = BrandColors.AmberGold
                     )
                     if (state.info.releaseNotes.isNotBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             state.info.releaseNotes.take(200),
                             fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            color = BrandColors.OffWhite,
                             lineHeight = 18.sp
                         )
                     }
@@ -644,7 +695,11 @@ private fun UpdateCard(
                     Button(
                         onClick = { onDownload(state.info) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BrandColors.AmberGold,
+                            contentColor = BrandColors.InkBlack,
+                        ),
                     ) {
                         Text("Download and install", fontSize = 14.sp)
                     }
@@ -654,19 +709,20 @@ private fun UpdateCard(
                         "Downloading v${state.info.versionName}…",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = BrandColors.AmberGold
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.dp,
+                            color = BrandColors.AmberGold
                         )
                         Spacer(modifier = Modifier.size(12.dp))
                         Text(
                             "${(state.progress * 100).toInt()}%",
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = BrandColors.OffWhite
                         )
                     }
                 }
@@ -675,13 +731,17 @@ private fun UpdateCard(
                         "Ready to install v${state.info.versionName}",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = BrandColors.AmberGold
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = { onInstall(state.apk) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BrandColors.AmberGold,
+                            contentColor = BrandColors.InkBlack,
+                        ),
                     ) {
                         Text("Install now", fontSize = 14.sp)
                     }
@@ -691,20 +751,24 @@ private fun UpdateCard(
                         "Install permission needed",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = BrandColors.AmberGold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         "Allow O'lyapmiz to install downloaded updates. The installer will continue when you return.",
                         fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        color = BrandColors.OffWhite,
                         lineHeight = 18.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = { onInstall(state.apk) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BrandColors.AmberGold,
+                            contentColor = BrandColors.InkBlack,
+                        ),
                     ) {
                         Text("Open install permission", fontSize = 14.sp)
                     }
@@ -717,10 +781,15 @@ private fun UpdateCard(
                         Text(
                             "You're on the latest version (${state.version}).",
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = BrandColors.OffWhite,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = onDismiss) {
+                        TextButton(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = BrandColors.AmberGold,
+                            ),
+                        ) {
                             Text("OK", fontSize = 14.sp)
                         }
                     }
@@ -730,7 +799,7 @@ private fun UpdateCard(
                         "One-time uninstall needed",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = BrandColors.AmberGold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -740,19 +809,29 @@ private fun UpdateCard(
                             "uninstall, then reopen the downloaded APK to install fresh — " +
                             "from then on, all future updates work in-place automatically.",
                         fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        color = BrandColors.OffWhite,
                         lineHeight = 18.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = onLaunchSelfUninstall,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BrandColors.AmberGold,
+                            contentColor = BrandColors.InkBlack,
+                        ),
                     ) {
                         Text("Uninstall current version", fontSize = 14.sp)
                     }
                     Spacer(modifier = Modifier.height(6.dp))
-                    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = BrandColors.AmberGold,
+                        ),
+                    ) {
                         Text("Later", fontSize = 14.sp)
                     }
                 }
@@ -767,7 +846,12 @@ private fun UpdateCard(
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = onDismiss) {
+                        TextButton(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = BrandColors.AmberGold,
+                            ),
+                        ) {
                             Text("OK", fontSize = 14.sp)
                         }
                     }
