@@ -1,60 +1,55 @@
 package com.example.lifedots.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF5BA0E9),
-    secondary = Color(0xFF4A90D9),
-    tertiary = Color(0xFF6AB0F9),
-    background = Color(0xFF1A1A1A),
-    surface = Color(0xFF2A2A2A),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFFE0E0E0),
-    onSurface = Color(0xFFE0E0E0)
-)
+/**
+ * App-chrome color scheme. Brand-fixed: warm amber-gold accent
+ * (#FFB300) on near-pure black (#0A0A0A) surfaces.
+ *
+ * NOTE: This drives only the app chrome (MainActivity +
+ * SettingsActivity). The wallpaper renderer reads its own
+ * ThemeColors derived from the user's ThemeOption — see
+ * LifeDotsWallpaperService.getThemeColors().
+ */
+private val BrandDarkColorScheme = darkColorScheme(
+    primary = BrandColors.AmberGold,
+    onPrimary = BrandColors.InkBlack,
+    primaryContainer = BrandColors.AmberGoldWash,
+    onPrimaryContainer = BrandColors.AmberGold,
 
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF2C2C2C),
-    secondary = Color(0xFF4A90D9),
-    tertiary = Color(0xFF5BA0E9),
-    background = Color(0xFFF5F5F5),
-    surface = Color.White,
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF2C2C2C),
-    onSurface = Color(0xFF2C2C2C)
+    secondary = BrandColors.AmberGold,
+    onSecondary = BrandColors.InkBlack,
+    secondaryContainer = BrandColors.AmberGoldWash,
+    onSecondaryContainer = BrandColors.AmberGold,
+
+    tertiary = BrandColors.AmberGold,
+    onTertiary = BrandColors.InkBlack,
+
+    background = BrandColors.InkBlack,
+    onBackground = BrandColors.OffWhite,
+
+    surface = BrandColors.InkBlackElevated,
+    onSurface = BrandColors.OffWhite,
+    surfaceVariant = BrandColors.InkBlackElevated,
+    onSurfaceVariant = BrandColors.GoldenMuted,
+
+    outline = BrandColors.HairlineGold,
+    outlineVariant = BrandColors.HairlineGold,
+
+    error = Color(0xFFE53935),
+    onError = BrandColors.OffWhite,
 )
 
 @Composable
 fun LifeDotsTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = BrandDarkColorScheme,
         typography = Typography,
-        content = content
+        content = content,
     )
 }
