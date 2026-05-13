@@ -120,7 +120,7 @@ data class CustomColors(
 // Custom Positioning & Scaling
 data class PositionSettings(
     val horizontalOffset: Float = 0f,  // -50 to 50 percent
-    val verticalOffset: Float = 18f,   // -50 to 50 percent; default 18% feels right under most lockscreen clocks
+    val verticalOffset: Float = 0f,    // -50 to 50 percent; fresh installs start centered
     val scale: Float = 1.0f            // 0.5 to 1.5
 )
 
@@ -362,7 +362,7 @@ class LifeDotsPreferences(context: Context) {
         // Position Settings
         val positionSettings = PositionSettings(
             horizontalOffset = prefs.getFloat(KEY_HORIZONTAL_OFFSET, 0f),
-            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 18f),
+            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 0f),
             scale = prefs.getFloat(KEY_SCALE, 1.0f)
         )
 
