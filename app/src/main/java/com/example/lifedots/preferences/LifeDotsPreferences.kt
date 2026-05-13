@@ -7,6 +7,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.Calendar
 import java.util.UUID
 
 enum class ThemeOption {
@@ -93,13 +94,18 @@ data class Goal(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val targetDate: Long,
-    val color: Int = 0xFF5BA0E9.toInt()
+    // Vivid Material Red 600 — the color the user "loved" from the wedding event.
+    // Shows as a glowing red dot on the calendar + tints the countdown line below.
+    val color: Int = 0xFFE53935.toInt()
 )
 
 data class GoalSettings(
-    val enabled: Boolean = false,
+    // Goals are rendered as colored dots in the calendar + a countdown line
+    // below the year stats (the same look the wedding event used to have).
+    // Enabled by default so users see the slot waiting to be filled.
+    val enabled: Boolean = true,
     val goals: List<Goal> = emptyList(),
-    val position: GoalPosition = GoalPosition.TOP
+    val position: GoalPosition = GoalPosition.BOTTOM
 )
 
 data class CustomColors(
@@ -259,6 +265,37 @@ class LifeDotsPreferences(context: Context) {
             // of the legacy 365-dot continuous grid.
             editor.remove(KEY_VIEW_MODE)
         }
+        if (stored < 2) {
+            // v2: the Calendar's single milestone event has been replaced by
+            // the general Goal countdown. If the user had an event configured,
+            // convert it to a Goal so they don't lose their wedding/birthday/etc.
+            val hadEvent = prefs.getBoolean(KEY_CALENDAR_EVENT_ENABLED, false)
+            val label = prefs.getString(KEY_CALENDAR_EVENT_LABEL, "")?.takeIf { it.isNotBlank() }
+            val month = prefs.getInt(KEY_CALENDAR_EVENT_MONTH, -1)
+            val day = prefs.getInt(KEY_CALENDAR_EVENT_DAY, -1)
+            val color = prefs.getInt(KEY_CALENDAR_EVENT_COLOR, 0xFFE53935.toInt())
+            if (hadEvent && label != null && month in 0..11 && day in 1..31) {
+                val existingJson = prefs.getString(KEY_GOALS_JSON, "[]") ?: "[]"
+                val type = object : TypeToken<List<Goal>>() {}.type
+                val existing: List<Goal> = try { gson.fromJson(existingJson, type) ?: emptyList() } catch (e: Exception) { emptyList() }
+                val calendar = Calendar.getInstance().apply {
+                    clear()
+                    set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, day)
+                }
+                val newGoal = Goal(title = label, targetDate = calendar.timeInMillis, color = color)
+                editor.putString(KEY_GOALS_JSON, gson.toJson(existing + newGoal))
+                editor.putBoolean(KEY_GOALS_ENABLED, true)
+            }
+            // Wipe legacy event keys regardless — even if migration didn't add a
+            // goal, the renderer no longer reads these so they're dead weight.
+            editor.remove(KEY_CALENDAR_EVENT_ENABLED)
+            editor.remove(KEY_CALENDAR_EVENT_LABEL)
+            editor.remove(KEY_CALENDAR_EVENT_MONTH)
+            editor.remove(KEY_CALENDAR_EVENT_DAY)
+            editor.remove(KEY_CALENDAR_EVENT_COLOR)
+        }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
 
@@ -323,9 +360,9 @@ class LifeDotsPreferences(context: Context) {
             emptyList()
         }
         val goalSettings = GoalSettings(
-            enabled = prefs.getBoolean(KEY_GOALS_ENABLED, false),
+            enabled = prefs.getBoolean(KEY_GOALS_ENABLED, true),
             goals = goals,
-            position = GoalPosition.valueOf(prefs.getString(KEY_GOALS_POSITION, GoalPosition.TOP.name) ?: GoalPosition.TOP.name)
+            position = GoalPosition.valueOf(prefs.getString(KEY_GOALS_POSITION, GoalPosition.BOTTOM.name) ?: GoalPosition.BOTTOM.name)
         )
 
         // Position Settings
@@ -812,7 +849,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 1
+        private const val CURRENT_MIGRATION_VERSION = 2
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"

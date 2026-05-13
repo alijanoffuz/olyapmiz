@@ -279,8 +279,13 @@ class LifeDotsWallpaperService : WallpaperService() {
             val topOffset = calculateTopOffset(canvas.width, canvas.height, settings)
             val bottomOffset = calculateBottomOffset(canvas.width, canvas.height, settings)
 
-            // Feature 6: Draw goals at top if enabled and positioned there
-            if (settings.goalSettings.enabled && settings.goalSettings.position == GoalPosition.TOP) {
+            // Feature 6: Floating goals list at top — only for non-Calendar view
+            // modes. In Calendar mode goals are rendered as colored dots in the
+            // grid + countdown lines below year stats, drawn inside drawCalendarView.
+            val isCalendarModeEarly = !settings.treeEffectSettings.enabled &&
+                settings.viewModeSettings.mode == ViewMode.CALENDAR
+            if (!isCalendarModeEarly && settings.goalSettings.enabled &&
+                settings.goalSettings.position == GoalPosition.TOP) {
                 drawGoals(canvas, settings.goalSettings, colors, 0f, canvas.width.toFloat())
             }
 
@@ -328,8 +333,9 @@ class LifeDotsWallpaperService : WallpaperService() {
                 canvas.restore()
             }
 
-            // Feature 6: Draw goals at bottom if enabled and positioned there
-            if (settings.goalSettings.enabled && settings.goalSettings.position == GoalPosition.BOTTOM) {
+            // Floating goals list at bottom — same rule as top: skip in Calendar mode.
+            if (!isCalendarModeEarly && settings.goalSettings.enabled &&
+                settings.goalSettings.position == GoalPosition.BOTTOM) {
                 val goalY = canvas.height - bottomOffset + 20f
                 drawGoals(canvas, settings.goalSettings, colors, goalY, canvas.width.toFloat())
             }
@@ -512,6 +518,21 @@ class LifeDotsWallpaperService : WallpaperService() {
             val cal = Calendar.getInstance()
             val currentYear = cal.get(Calendar.YEAR)
 
+            // Enabled Goals for the current year, mapped by day-of-year. Built once
+            // here so both the dot-rendering loop AND the layout budget below can
+            // see how many countdown lines we need.
+            val goalDayOfYear: Map<Int, com.example.lifedots.preferences.Goal> =
+                if (settings.goalSettings.enabled) {
+                    val tmpCal = Calendar.getInstance()
+                    settings.goalSettings.goals.mapNotNull { goal ->
+                        tmpCal.timeInMillis = goal.targetDate
+                        if (tmpCal.get(Calendar.YEAR) == currentYear) {
+                            tmpCal.get(Calendar.DAY_OF_YEAR) to goal
+                        } else null
+                    }.toMap()
+                } else emptyMap()
+            val upcomingGoalCount = goalDayOfYear.count { (day, _) -> day > dayOfYear }
+
             val columns = settings.calendarViewSettings.columnsPerRow.coerceIn(2, 4)
             val rows = (12 + columns - 1) / columns
 
@@ -540,21 +561,15 @@ class LifeDotsWallpaperService : WallpaperService() {
             val statsBottomBaseline = height * 0.965f
 
             val showStats = settings.calendarViewSettings.showYearStats
-            val showEventCountdown = showStats && settings.calendarViewSettings.eventEnabled
 
             // Provisional dot size to drive label/stats font sizes (final after layout)
             val maxDotSizeH = cellWidth / 8f
-            // Grid area: between safeTop and (stats top - margin). We back-compute dotSize
-            // by solving for the largest dotSize that lets the grid fit between safeTop and
-            // the top of the stats block (which depends on dotSize via labelSize).
-            // Solve: gridStartY = safeTop ; gridEndY + (3 + extraLineCount) * 1.6d <= statsBottomBaseline
-            // gridEndY = safeTop + rows*12.1d + (rows-1)*1.6d  →  (4.8d + 1.6d) extra for stats line 1
-            // For event: + 0.8d + 1.6d more = 7.2d total extra after grid.
-            val statsExtraDotUnits = when {
-                showEventCountdown -> 4.8f + 1.6f + 0.8f + 1.6f  // margin + line1 + lineGap + line2
-                showStats -> 4.8f + 1.6f                          // margin + line1
-                else -> 0f
-            }
+            // Grid area: between safeTop and (stats top - margin). The number of
+            // stats lines is 1 (year stats) + upcomingGoalCount countdown lines.
+            // Each extra line = 0.8d gap + 1.6d line height (in dotSize units).
+            val statsExtraDotUnits = if (showStats) {
+                4.8f + 1.6f + upcomingGoalCount * (0.8f + 1.6f)
+            } else 0f
             val gridUnits = 12.1f * rows + 1.6f * (rows - 1)
             val totalDotUnitsForFit = gridUnits + statsExtraDotUnits
             val maxDotSizeV = (statsBottomBaseline - safeTop) / totalDotUnitsForFit
@@ -572,11 +587,12 @@ class LifeDotsWallpaperService : WallpaperService() {
             val statsFontSize = labelSize
             val statsLineGap = labelSize * 0.5f
 
-            // Stats lines anchored to fixed positions from screen bottom
-            val statsLine2BaselineY = statsBottomBaseline
-            val statsLine1BaselineY = if (showEventCountdown)
-                statsLine2BaselineY - statsLineGap - statsFontSize
-            else statsLine2BaselineY
+            // Stats stack: year stats line is highest; goal countdown lines stack
+            // below it down toward the bottom edge. Last goal sits at statsBottomBaseline.
+            // Year-stats baseline = bottom - (count) * lineHeight.
+            val statsLine1BaselineY = if (upcomingGoalCount > 0)
+                statsBottomBaseline - upcomingGoalCount * (statsLineGap + statsFontSize)
+            else statsBottomBaseline
 
             // Anchor the grid near the top (close under the date/clock) with a small breathing
             // margin, instead of vertically centering. This addresses the user's request to
@@ -595,18 +611,8 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             val mondayFirst = settings.calendarViewSettings.mondayFirst
 
-            // Resolve the event's day-of-year (used both for the red dot and the countdown)
-            val eventCfg = settings.calendarViewSettings
-            var eventDayOfYear = -1
-            if (eventCfg.eventEnabled) {
-                val evCal = Calendar.getInstance().apply {
-                    clear()
-                    set(currentYear, eventCfg.eventMonth, eventCfg.eventDay)
-                }
-                if (evCal.get(Calendar.YEAR) == currentYear) {
-                    eventDayOfYear = evCal.get(Calendar.DAY_OF_YEAR)
-                }
-            }
+            // (Goals → day-of-year map was computed at the top of this function so
+            // the layout budget can size the grid around the countdown lines.)
 
             // Setup label paint
             monthLabelPaint.color = settings.viewModeSettings.monthLabelColor
@@ -666,16 +672,16 @@ class LifeDotsWallpaperService : WallpaperService() {
                     val cx = cellLeft + col * (dotSize + dotGap) + dotSize / 2
                     val cy = dotsTop + row * (dotSize + dotGap) + dotSize / 2
 
-                    val isEventDay = eventCfg.eventEnabled && globalDayCounter == eventDayOfYear
+                    val goalOnThisDay = goalDayOfYear[globalDayCounter]
                     val isToday = globalDayCounter == dayOfYear && settings.highlightToday
 
                     when {
-                        isEventDay -> {
-                            drawTintedDot(canvas, cx, cy, dotSize / 2, eventCfg.eventColor, glow = true)
+                        goalOnThisDay != null -> {
+                            drawTintedDot(canvas, cx, cy, dotSize / 2, goalOnThisDay.color, glow = true)
                             currentDotIndex++
                         }
                         isToday -> {
-                            drawTintedDot(canvas, cx, cy, dotSize / 2, eventCfg.currentWeekColor, glow = true)
+                            drawTintedDot(canvas, cx, cy, dotSize / 2, settings.calendarViewSettings.currentWeekColor, glow = true)
                             currentDotIndex++
                         }
                         globalDayCounter < dayOfYear ->
@@ -726,31 +732,34 @@ class LifeDotsWallpaperService : WallpaperService() {
 
                 canvas.drawText(pctText, x, baselineY, statsPaint)
 
-                // Second line: event countdown (e.g., "75d to birthday")
-                if (showEventCountdown && eventDayOfYear > 0) {
-                    val diff = eventDayOfYear - dayOfYear
-                    if (diff > 0) {
+                // Goal countdown lines (e.g., "75d to wedding"). One line per
+                // goal whose date is still in the future, stacked downward toward
+                // the bottom edge — same position/font as the legacy event countdown.
+                val upcomingGoals = goalDayOfYear
+                    .filter { (day, _) -> day > dayOfYear }
+                    .toSortedMap()  // ascending by day-of-year
+                if (upcomingGoals.isNotEmpty()) {
+                    statsPaint.maskFilter = null
+                    statsPaint.alpha = 255
+                    val lineHeight = statsFontSize + statsLineGap
+                    upcomingGoals.entries.forEachIndexed { index, (day, goal) ->
+                        val diff = day - dayOfYear
                         val countText = "${diff}d to "
-                        val labelText = eventCfg.eventLabel
-
-                        statsPaint.maskFilter = null
-                        statsPaint.alpha = 255
+                        val labelText = goal.title
                         val countW = statsPaint.measureText(countText)
                         val labelW = statsPaint.measureText(labelText)
-                        val line2W = countW + labelW
+                        val lineW = countW + labelW
+                        val baselineY = statsLine1BaselineY + (index + 1) * lineHeight
+                        var x2 = (width - lineW) / 2
 
-                        val line2BaselineY = statsLine2BaselineY
-                        run {
-                            var x2 = (width - line2W) / 2
+                        statsPaint.color = goal.color
+                        statsPaint.alpha = 255
+                        canvas.drawText(countText, x2, baselineY, statsPaint)
+                        x2 += countW
 
-                            statsPaint.color = eventCfg.eventColor
-                            canvas.drawText(countText, x2, line2BaselineY, statsPaint)
-                            x2 += countW
-
-                            statsPaint.color = settings.viewModeSettings.monthLabelColor
-                            statsPaint.alpha = 130
-                            canvas.drawText(labelText, x2, line2BaselineY, statsPaint)
-                        }
+                        statsPaint.color = settings.viewModeSettings.monthLabelColor
+                        statsPaint.alpha = 130
+                        canvas.drawText(labelText, x2, baselineY, statsPaint)
                     }
                 }
             }
