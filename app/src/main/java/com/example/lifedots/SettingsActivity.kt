@@ -20,7 +20,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,8 +34,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,13 +48,17 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.core.view.WindowCompat
+import com.example.lifedots.ui.components.BirthdayEditor
+import com.example.lifedots.ui.components.IntervalSlider
+import com.example.lifedots.ui.components.PressableCard
+import com.example.lifedots.ui.components.rememberUxFeedback
+import com.example.lifedots.ui.theme.BrandColors
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,7 +97,6 @@ import com.example.lifedots.preferences.VisualTheme
 import com.example.lifedots.preferences.WallpaperSettings
 import com.example.lifedots.ui.components.ColorButton
 import com.example.lifedots.ui.components.ColorPickerDialog
-import com.example.lifedots.ui.components.DatePickerDialog
 import com.example.lifedots.ui.components.GoalEditorDialog
 import com.example.lifedots.ui.components.ModeTogglePill
 import com.example.lifedots.ui.theme.LifeDotsTheme
@@ -114,11 +116,18 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         preferences = LifeDotsPreferences.getInstance(this)
 
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false   // light icons on black
+        }
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.parseColor("#0A0A0A")
+
         setContent {
             LifeDotsTheme {
                 val snackbarHostState = remember { SnackbarHostState() }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    containerColor = BrandColors.InkBlack,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                 ) { innerPadding ->
                     SettingsScreen(
@@ -141,13 +150,6 @@ fun SettingsScreen(
     val settings by preferences.settingsFlow.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val showBirthdayDialog = remember { mutableStateOf(false) }
-
-    LaunchedEffect(settings.topViewMode) {
-        if (settings.topViewMode == TopViewMode.YIL) {
-            showBirthdayDialog.value = false
-        }
-    }
 
     var showBgColorPicker by remember { mutableStateOf(false) }
     var showFilledColorPicker by remember { mutableStateOf(false) }
@@ -212,9 +214,11 @@ fun SettingsScreen(
     ) {
         Text(
             text = stringResource(R.string.settings_title),
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
+            style = MaterialTheme.typography.headlineMedium.copy(
+                color = BrandColors.AmberGold,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -225,22 +229,61 @@ fun SettingsScreen(
             preferences = preferences,
             snackbarHostState = snackbarHostState,
             scope = scope,
-            onBirthdayNeeded = {
-                preferences.setTopViewMode(TopViewMode.UMR)
-                showBirthdayDialog.value = true
-            },
         )
 
         if (settings.topViewMode == TopViewMode.UMR) {
             UmrSettingsSection(
                 settings = settings,
                 preferences = preferences,
-                showBirthdayDialog = showBirthdayDialog.value,
-                onShowBirthdayDialogChange = { showBirthdayDialog.value = it },
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // App Section (Sounds + Vibrations)
+        SettingsSection(title = "App") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Sounds",
+                        style = MaterialTheme.typography.bodyLarge.copy(color = BrandColors.OffWhite),
+                    )
+                    Text(
+                        text = "system click effects on tap",
+                        style = MaterialTheme.typography.bodySmall.copy(color = BrandColors.GoldenMuted),
+                    )
+                }
+                BrandSwitch(
+                    checked = settings.soundsEnabled,
+                    onCheckedChange = { preferences.setSoundsEnabled(it) },
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Vibrations",
+                        style = MaterialTheme.typography.bodyLarge.copy(color = BrandColors.OffWhite),
+                    )
+                    Text(
+                        text = "haptic feedback on tap",
+                        style = MaterialTheme.typography.bodySmall.copy(color = BrandColors.GoldenMuted),
+                    )
+                }
+                BrandSwitch(
+                    checked = settings.vibrationsEnabled,
+                    onCheckedChange = { preferences.setVibrationsEnabled(it) },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Theme Section
         SettingsSection(title = stringResource(R.string.theme_section)) {
@@ -418,13 +461,9 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
-                    Switch(
+                    BrandSwitch(
                         checked = settings.highlightToday,
                         onCheckedChange = { preferences.setHighlightToday(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = MaterialTheme.colorScheme.primary,
-                            checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        )
                     )
                 }
             }
@@ -513,9 +552,9 @@ fun SettingsScreen(
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Switch(
+                                BrandSwitch(
                                     checked = settings.viewModeSettings.showMonthLabels,
-                                    onCheckedChange = { preferences.setShowMonthLabels(it) }
+                                    onCheckedChange = { preferences.setShowMonthLabels(it) },
                                 )
                             }
                         }
@@ -542,9 +581,9 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Enable Footer Text", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                        Switch(
+                        BrandSwitch(
                             checked = settings.footerTextSettings.enabled,
-                            onCheckedChange = { preferences.setFooterEnabled(it) }
+                            onCheckedChange = { preferences.setFooterEnabled(it) },
                         )
                     }
 
@@ -749,9 +788,9 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Enable Goals", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                        Switch(
+                        BrandSwitch(
                             checked = settings.goalSettings.enabled,
-                            onCheckedChange = { preferences.setGoalsEnabled(it) }
+                            onCheckedChange = { preferences.setGoalsEnabled(it) },
                         )
                     }
 
@@ -963,8 +1002,8 @@ private fun ModeTopSection(
     preferences: LifeDotsPreferences,
     snackbarHostState: SnackbarHostState,
     scope: CoroutineScope,
-    onBirthdayNeeded: () -> Unit,
 ) {
+    val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -989,22 +1028,21 @@ private fun ModeTopSection(
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
-            Switch(
+            BrandSwitch(
                 checked = settings.autoSwitchSettings.enabled,
                 onCheckedChange = { wantOn ->
                     if (wantOn && settings.umrSettings.birthdayEpochMs == 0L) {
                         scope.launch {
-                            val result = snackbarHostState.showSnackbar(
+                            snackbarHostState.showSnackbar(
                                 message = "Set your birthday first",
-                                actionLabel = "Set",
+                                actionLabel = "OK",
                                 duration = SnackbarDuration.Short,
                             )
-                            if (result == SnackbarResult.ActionPerformed) onBirthdayNeeded()
                         }
                     } else {
                         preferences.setAutoSwitchEnabled(wantOn)
                     }
-                }
+                },
             )
         }
 
@@ -1013,9 +1051,10 @@ private fun ModeTopSection(
                 text = "Switch every",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            IntervalChips(
+            IntervalSlider(
                 currentMs = settings.autoSwitchSettings.intervalMs,
-                onPick = { preferences.setAutoSwitchIntervalMs(it) },
+                onIntervalChange = { ms -> preferences.setAutoSwitchIntervalMs(ms) },
+                feedback = feedback,
             )
             Text(
                 text = "Auto-switch is on — wallpaper rotates automatically.",
@@ -1027,114 +1066,111 @@ private fun ModeTopSection(
     HorizontalDivider()
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun IntervalChips(currentMs: Long, onPick: (Long) -> Unit) {
-    val options = listOf(
-        "5s" to 5_000L,
-        "1m" to 60_000L,
-        "2m" to 120_000L,
-        "5m" to 300_000L,
-        "30m" to 1_800_000L,
-        "1h" to 3_600_000L,
-    )
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        options.forEach { (label, ms) ->
-            FilterChip(
-                selected = currentMs == ms,
-                onClick = { onPick(ms) },
-                label = { Text(label) },
-            )
-        }
-    }
-}
-
 @Composable
 private fun UmrSettingsSection(
     settings: WallpaperSettings,
     preferences: LifeDotsPreferences,
-    showBirthdayDialog: Boolean,
-    onShowBirthdayDialogChange: (Boolean) -> Unit,
 ) {
     val birthdayMs = settings.umrSettings.birthdayEpochMs
     val isSet = birthdayMs > 0L
     val fmt = remember { java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale.getDefault()) }
+    var editing by remember { mutableStateOf(!isSet) }
+    val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(
-            text = "Umr",
-            style = MaterialTheme.typography.titleMedium,
-        )
-
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onShowBirthdayDialogChange(true) },
-            shape = RoundedCornerShape(12.dp),
-            color = if (isSet) MaterialTheme.colorScheme.surfaceVariant
-                    else Color(0xFFE53935),
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+    SettingsSection(title = "Umr") {
+        if (editing) {
+            BirthdayEditor(
+                initialEpochMs = birthdayMs,
+                feedback = feedback,
+                onSave = { ms ->
+                    preferences.setUmrBirthday(ms)
+                    editing = false
+                },
+            )
+        } else {
+            PressableCard(
+                onClick = { editing = true },
+                feedback = feedback,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSet) BrandColors.InkBlackElevated else Color(0xFFE53935),
+                contentColor = if (isSet) BrandColors.OffWhite else Color.White,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isSet) "Birthday" else "Set your birthday",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isSet) BrandColors.GoldenMuted else Color.White,
+                        )
+                        Text(
+                            text = if (isSet) fmt.format(java.util.Date(birthdayMs))
+                                   else "Required to render your life-in-weeks grid",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (isSet) BrandColors.OffWhite else Color.White,
+                        )
+                    }
                     Text(
-                        text = if (isSet) "Birthday" else "Set your birthday",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (isSet) MaterialTheme.colorScheme.onSurfaceVariant
-                                else Color.White,
-                    )
-                    Text(
-                        text = if (isSet) fmt.format(java.util.Date(birthdayMs))
-                               else "Required to render your life-in-weeks grid",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isSet) MaterialTheme.colorScheme.onSurfaceVariant
-                                else Color.White,
+                        text = "✎",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (isSet) BrandColors.AmberGold else Color.White,
                     )
                 }
             }
         }
-    }
-    HorizontalDivider()
-
-    if (showBirthdayDialog) {
-        DatePickerDialog(
-            initialDate = if (isSet) birthdayMs
-                         else System.currentTimeMillis() - (25L * 365 * 24 * 60 * 60 * 1000),
-            onDateSelected = { picked ->
-                preferences.setUmrBirthday(picked)
-                onShowBirthdayDialogChange(false)
-            },
-            onDismiss = { onShowBirthdayDialogChange(false) },
-        )
     }
 }
 
 @Composable
 fun SettingsSection(
     title: String,
-    content: @Composable () -> Unit
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
 ) {
-    Column {
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = title,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            modifier = Modifier.padding(bottom = 12.dp)
+            style = MaterialTheme.typography.titleMedium.copy(
+                color = BrandColors.AmberGold,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
         )
-        content()
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = BrandColors.InkBlackElevated,
+            border = BorderStroke(1.dp, BrandColors.HairlineGold),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                content()
+            }
+        }
     }
+}
+
+@Composable
+private fun BrandSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = BrandColors.InkBlack,
+            checkedTrackColor = BrandColors.AmberGold,
+            checkedBorderColor = BrandColors.AmberGold,
+            uncheckedThumbColor = BrandColors.GoldenMuted,
+            uncheckedTrackColor = BrandColors.InkBlackElevated,
+            uncheckedBorderColor = BrandColors.HairlineGold,
+        ),
+    )
 }
 
 @Composable
