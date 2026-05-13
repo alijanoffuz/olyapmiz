@@ -290,6 +290,19 @@ class LifeDotsPreferences(context: Context) {
             editor.remove(KEY_CALENDAR_EVENT_DAY)
             editor.remove(KEY_CALENDAR_EVENT_COLOR)
         }
+        if (stored < 4) {
+            // v4: vertical-offset slider re-baselined. "0%" on the slider now
+            // represents the position that used to require +19% — the spot that
+            // fits below most lockscreen clocks. The wallpaper renderer adds
+            // VERTICAL_OFFSET_BASELINE (19) back in at draw time. To keep
+            // existing users at the same visual position, subtract 19 from
+            // anything they had saved (negative values are fine; slider range
+            // is -50..50).
+            if (prefs.contains(KEY_VERTICAL_OFFSET)) {
+                val old = prefs.getFloat(KEY_VERTICAL_OFFSET, 0f)
+                editor.putFloat(KEY_VERTICAL_OFFSET, old - 19f)
+            }
+        }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
 
@@ -843,7 +856,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 3
+        private const val CURRENT_MIGRATION_VERSION = 4
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
