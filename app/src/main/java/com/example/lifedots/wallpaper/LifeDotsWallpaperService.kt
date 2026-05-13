@@ -158,7 +158,7 @@ class LifeDotsWallpaperService : WallpaperService() {
 
         private val settingsChangeListener: () -> Unit = {
             autoSwitchRotator.refresh(preferences.settings)
-            if (visible) draw()
+            handler.post { if (visible) draw() }
         }
 
         private val midnightChecker = object : Runnable {
