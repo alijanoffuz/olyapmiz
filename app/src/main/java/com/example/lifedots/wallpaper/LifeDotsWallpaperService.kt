@@ -50,8 +50,10 @@ import com.example.lifedots.preferences.TextAlignment
 import com.example.lifedots.preferences.ThemeOption
 import com.example.lifedots.preferences.TreeEffectSettings
 import com.example.lifedots.preferences.TreeStyle
+import com.example.lifedots.preferences.TopViewMode
 import com.example.lifedots.preferences.ViewMode
 import com.example.lifedots.preferences.WallpaperSettings
+import com.example.lifedots.preferences.currentEffectiveMode
 import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.min
@@ -283,6 +285,14 @@ class LifeDotsWallpaperService : WallpaperService() {
             val settings = preferences.settings
             val colors = getThemeColors(settings)
 
+            // NEW: top-level mode dispatch. When Umr is active, render the
+            // life-in-weeks grid and return; Yil's existing flow is untouched.
+            if (currentEffectiveMode(System.currentTimeMillis(), settings) == TopViewMode.UMR) {
+                drawUmrView(canvas, settings, colors)
+                return
+            }
+
+            // ===== Existing Yil rendering flow continues unchanged below =====
             // Draw background color first
             canvas.drawColor(colors.background)
 
@@ -791,6 +801,89 @@ class LifeDotsWallpaperService : WallpaperService() {
                         canvas.drawText(labelText, x2, baselineY, statsPaint)
                     }
                 }
+            }
+        }
+
+        private fun drawUmrView(canvas: Canvas, settings: WallpaperSettings, colors: ThemeColors) {
+            val birthdayMs = settings.umrSettings.birthdayEpochMs
+            val now = System.currentTimeMillis()
+
+            val msPerWeek = 7L * 24L * 60L * 60L * 1000L
+            val weeksLived = if (birthdayMs > 0L) ((now - birthdayMs) / msPerWeek).toInt() else -1
+            val totalCells = UmrLayoutCompute.ROWS * UmrLayoutCompute.COLS  // 4160
+
+            val layout = UmrLayoutCompute.compute(
+                widthPx = canvas.width,
+                heightPx = canvas.height,
+                topOffsetPx = 0f,
+                bottomOffsetPx = 0f,
+                systemSafeInsetTopPx = 0,
+                systemSafeInsetBottomPx = 0,
+                systemSafeInsetLeftPx = 0,
+                systemSafeInsetRightPx = 0,
+            )
+
+            // Background
+            canvas.drawColor(colors.background)
+
+            // Apply position transform (horizontal/vertical offset + scale) like Yil does.
+            val position = settings.positionSettings
+            val offsetX = canvas.width * (position.horizontalOffset / 100f)
+            val offsetY = canvas.height * (position.verticalOffset / 100f)
+            canvas.save()
+            canvas.translate(offsetX, offsetY)
+            canvas.scale(position.scale, position.scale, canvas.width / 2f, canvas.height / 2f)
+
+            val filledPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors.filledDot
+                alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
+                style = Paint.Style.FILL
+            }
+            val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors.emptyDot
+                alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
+                style = Paint.Style.FILL
+            }
+            val todayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors.todayDot
+                style = Paint.Style.FILL
+            }
+            // Subtle glow for current-week dot, matching Yil's todayGlow vibe.
+            val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors.todayDot
+                alpha = 80
+                style = Paint.Style.FILL
+                maskFilter = BlurMaskFilter(layout.dotSizePx * 1.5f, BlurMaskFilter.Blur.NORMAL)
+            }
+
+            val r = layout.dotSizePx / 2f
+
+            for (i in 0 until totalCells) {
+                val row = i / UmrLayoutCompute.COLS
+                val col = i % UmrLayoutCompute.COLS
+                val cx = layout.gridLeftPx + col * (layout.dotSizePx + layout.dotGapPx) + r
+                val cy = layout.safeTopPx + row * (layout.dotSizePx + layout.dotGapPx) + r
+
+                when {
+                    // Birthday unset — render everything as future (empty).
+                    weeksLived < 0 -> canvas.drawCircle(cx, cy, r, emptyPaint)
+                    // Past
+                    i < weeksLived -> canvas.drawCircle(cx, cy, r, filledPaint)
+                    // Current week — single tinted dot with a soft glow.
+                    i == weeksLived -> {
+                        canvas.drawCircle(cx, cy, r * 1.4f, glowPaint)
+                        canvas.drawCircle(cx, cy, r, todayPaint)
+                    }
+                    // Future
+                    else -> canvas.drawCircle(cx, cy, r, emptyPaint)
+                }
+            }
+
+            canvas.restore()
+
+            // Optional shared footer text (user's signature line), if enabled.
+            if (settings.footerTextSettings.enabled) {
+                drawFooterText(canvas, settings.footerTextSettings, canvas.height - 40f)
             }
         }
 
