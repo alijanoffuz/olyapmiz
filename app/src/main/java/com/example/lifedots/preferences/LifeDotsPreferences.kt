@@ -982,14 +982,12 @@ class LifeDotsPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_SOUNDS_ENABLED, enabled).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(soundsEnabled = enabled)
-        notifyWallpaperChanged()
     }
 
     fun setVibrationsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_VIBRATIONS_ENABLED, enabled).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(vibrationsEnabled = enabled)
-        notifyWallpaperChanged()
     }
 
     fun notifyWallpaperChanged() {
