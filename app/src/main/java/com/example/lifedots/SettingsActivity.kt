@@ -444,13 +444,6 @@ fun SettingsScreen(
                                     onClick = { preferences.setCalendarColumns(3) },
                                     modifier = Modifier.weight(1f)
                                 )
-                                CalendarColumnsOption(
-                                    label = "4 x 3",
-                                    columns = 4,
-                                    isSelected = settings.calendarViewSettings.columnsPerRow == 4,
-                                    onClick = { preferences.setCalendarColumns(4) },
-                                    modifier = Modifier.weight(1f)
-                                )
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))

@@ -562,7 +562,8 @@ class LifeDotsWallpaperService : WallpaperService() {
                 } else emptyMap()
             val upcomingGoalCount = goalDayOfYear.count { (day, _) -> day > dayOfYear }
 
-            val columns = settings.calendarViewSettings.columnsPerRow.coerceIn(2, 4)
+            // Only 2×6 and 3×4 are exposed in Settings; clamp legacy 4-column saves.
+            val columns = settings.calendarViewSettings.columnsPerRow.coerceIn(2, 3)
             val rows = (12 + columns - 1) / columns
 
             val width = canvas.width.toFloat()
