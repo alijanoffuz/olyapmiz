@@ -290,15 +290,14 @@ class LifeDotsPreferences(context: Context) {
             editor.remove(KEY_CALENDAR_EVENT_DAY)
             editor.remove(KEY_CALENDAR_EVENT_COLOR)
         }
-        if (stored < 6) {
-            // v6: vertical-offset re-baselined for good. Slider "0%" now means
-            // "calendar at the comfortable centred position" — the renderer adds
-            // +18% offset internally (VERTICAL_OFFSET_BASELINE). Force-write 0
-            // so every install — fresh download, in-place upgrade from any past
-            // version including the v5 18%-literal scheme — opens with the
-            // slider at 0% and the calendar in the right spot. Users can drag
-            // negative to pull up or positive to push down from there.
-            editor.putFloat(KEY_VERTICAL_OFFSET, 0f)
+        if (stored < 7) {
+            // v7: undo the vertical-offset migration thrash from v4/v5/v6.
+            // Slider is literal again — verticalOffset is the percent of canvas
+            // height to translate, nothing implicit added by the renderer. Wipe
+            // any saved value so the default 0% kicks in for everyone. Users
+            // who want the calendar lower drag the slider; that drag persists
+            // and survives all future updates.
+            editor.remove(KEY_VERTICAL_OFFSET)
         }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
@@ -853,7 +852,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 6
+        private const val CURRENT_MIGRATION_VERSION = 7
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"

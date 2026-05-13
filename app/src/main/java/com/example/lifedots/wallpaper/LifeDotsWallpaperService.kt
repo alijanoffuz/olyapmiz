@@ -60,14 +60,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
-/**
- * Slider "0%" on the Vertical Offset control corresponds to this many percent
- * of canvas-height translate downward in the renderer. The number is chosen so
- * the calendar grid sits comfortably below most lockscreen clocks out of the
- * box. Negative slider values pull above this baseline, positive ones below.
- */
-private const val VERTICAL_OFFSET_BASELINE = 18f
-
 class LifeDotsWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine {
@@ -331,7 +323,7 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // Calculate offset based on screen size
             val offsetX = canvas.width * (positionSettings.horizontalOffset / 100f)
-            val offsetY = canvas.height * ((positionSettings.verticalOffset + VERTICAL_OFFSET_BASELINE) / 100f)
+            val offsetY = canvas.height * (positionSettings.verticalOffset / 100f)
 
             // CALENDAR view manages its own transforms internally so its bottom stats
             // can be anchored to the screen regardless of the user's vertical offset.
@@ -679,7 +671,7 @@ class LifeDotsWallpaperService : WallpaperService() {
             // anchored to the bottom of the screen no matter how the user moves the grid.
             canvas.save()
             val offsetX = canvas.width * (positionSettings.horizontalOffset / 100f)
-            val offsetY = canvas.height * ((positionSettings.verticalOffset + VERTICAL_OFFSET_BASELINE) / 100f)
+            val offsetY = canvas.height * (positionSettings.verticalOffset / 100f)
             canvas.translate(offsetX, offsetY)
             canvas.scale(
                 positionSettings.scale,
