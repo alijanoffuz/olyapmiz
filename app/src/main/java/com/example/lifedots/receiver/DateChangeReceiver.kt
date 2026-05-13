@@ -27,28 +27,41 @@ class DateChangeReceiver : BroadcastReceiver() {
             "android.intent.action.QUICKBOOT_POWERON" -> {
                 Log.i("LifeDots", "Boot completed — scheduling daily refresh alarm")
                 scheduleDailyAlarm(context)
+                // Re-arm auto-switch by poking prefs so the engine reschedules its alarm.
+                pokeAutoSwitchRedraw(context)
             }
             ACTION_DAILY_TICK,
             Intent.ACTION_DATE_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_TIME_CHANGED -> {
                 Log.i("LifeDots", "Date/time changed (${intent.action}) — forcing wallpaper redraw")
-                try {
-                    val prefs = LifeDotsPreferences.getInstance(context)
-                    // Toggling forces notifyWallpaperChanged() regardless of whether
-                    // highlightToday actually changed.
-                    prefs.setHighlightToday(prefs.settings.highlightToday)
-                } catch (e: Exception) {
-                    Log.e("LifeDots", "Failed to refresh prefs on date change", e)
-                }
-                // Re-arm the alarm so it keeps firing daily even if the OS dropped a tick.
+                pokeAutoSwitchRedraw(context)
                 scheduleDailyAlarm(context)
             }
+            ACTION_AUTO_SWITCH_TICK -> {
+                Log.i("LifeDots", "Auto-switch tick — forcing wallpaper redraw")
+                pokeAutoSwitchRedraw(context)
+            }
+        }
+    }
+
+    /**
+     * Force a wallpaper redraw and let the engine reschedule its next
+     * alarm — by toggling a no-op preference, we leverage the existing
+     * notifyWallpaperChanged() listener chain.
+     */
+    private fun pokeAutoSwitchRedraw(context: Context) {
+        try {
+            val prefs = LifeDotsPreferences.getInstance(context)
+            prefs.setHighlightToday(prefs.settings.highlightToday)
+        } catch (e: Exception) {
+            Log.e("LifeDots", "Failed to poke prefs on auto-switch tick", e)
         }
     }
 
     companion object {
         const val ACTION_DAILY_TICK = "com.example.lifedots.DAILY_TICK"
+        const val ACTION_AUTO_SWITCH_TICK = "com.example.lifedots.AUTO_SWITCH_TICK"
 
         fun scheduleDailyAlarm(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager

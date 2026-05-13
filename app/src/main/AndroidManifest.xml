@@ -108,6 +108,7 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.example.lifedots.DAILY_TICK" />
+                <action android:name="com.example.lifedots.AUTO_SWITCH_TICK" />
             </intent-filter>
         </receiver>
 

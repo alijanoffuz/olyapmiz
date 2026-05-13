@@ -75,6 +75,11 @@ class LifeDotsWallpaperService : WallpaperService() {
         private var visible = false
         private var lastDrawnDay = -1
 
+        private val autoSwitchRotator = AutoSwitchRotator(applicationContext) {
+            // onTick — just request a redraw; the formula will pick up the new mode.
+            if (visible) draw()
+        }
+
         private val filledPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val todayPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -152,7 +157,8 @@ class LifeDotsWallpaperService : WallpaperService() {
         )
 
         private val settingsChangeListener: () -> Unit = {
-            handler.post { draw() }
+            autoSwitchRotator.refresh(preferences.settings)
+            if (visible) draw()
         }
 
         private val midnightChecker = object : Runnable {
@@ -168,6 +174,7 @@ class LifeDotsWallpaperService : WallpaperService() {
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             LifeDotsPreferences.addWallpaperChangeListener(settingsChangeListener)
+            autoSwitchRotator.refresh(preferences.settings)
             // Schedule the daily refresh alarm the first time the wallpaper runs, so
             // users don't have to wait for a reboot for the safety net to arm.
             DateChangeReceiver.scheduleDailyAlarm(applicationContext)
@@ -179,6 +186,7 @@ class LifeDotsWallpaperService : WallpaperService() {
         override fun onDestroy() {
             super.onDestroy()
             LifeDotsPreferences.removeWallpaperChangeListener(settingsChangeListener)
+            autoSwitchRotator.cancel()
             handler.removeCallbacks(animationRunner)
             handler.removeCallbacks(fluidRunner)
             handler.removeCallbacksAndMessages(null)
@@ -186,6 +194,7 @@ class LifeDotsWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
+            autoSwitchRotator.setVisible(visible)
             if (visible) {
                 draw()
                 scheduleNextMidnightCheck()
