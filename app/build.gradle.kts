@@ -31,7 +31,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "GITHUB_OWNER", "\"alijanoffuz\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"aiblogsuz\"")
         buildConfigField("String", "GITHUB_REPO", "\"olyapmiz\"")
     }
 

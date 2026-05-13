@@ -9,7 +9,7 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 </p>
 
 <p align="center">
-  <a href="https://github.com/alijanoffuz/olyapmiz/releases/latest/download/olyapmiz.apk">
+  <a href="https://github.com/aiblogsuz/olyapmiz/releases/latest/download/olyapmiz.apk">
     <img src="https://img.shields.io/badge/Download_APK-yellow?style=for-the-badge&logo=android&logoColor=black&labelColor=000000&color=FFD400" alt="Download latest APK" height="36"/>
   </a>
   <br/>
@@ -38,7 +38,7 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 
 ### From a release APK
 
-1. Grab the latest APK from [Releases](https://github.com/alijanoffuz/olyapmiz/releases/latest) (or use the Download button at the top of this page).
+1. Grab the latest APK from [Releases](https://github.com/aiblogsuz/olyapmiz/releases/latest) (or use the Download button at the top of this page).
 2. Install on your Android phone (Settings → Apps → Special access → Install unknown apps; allow your file manager).
 3. Open **O'lyapmiz** → tap **Set as Wallpaper** → confirm in the system live-wallpaper preview.
 

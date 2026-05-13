@@ -67,4 +67,11 @@ class AutoSwitchModeTest {
         val s = settings(enabled = true, intervalMs = 0L, referenceMs = 0L, startMode = TopViewMode.YIL)
         assertEquals(TopViewMode.YIL, currentEffectiveMode(99_999L, s))
     }
+
+    @Test fun `negative elapsed clamps to startMode`() {
+        // referenceMs is in the future (clock skew / backup restore)
+        val s = settings(enabled = true, intervalMs = 60_000L, referenceMs = 90_000L, startMode = TopViewMode.YIL)
+        // now = 0, so elapsed = -90_000 → ticks = -1 (odd), would flip away from startMode without the guard
+        assertEquals(TopViewMode.YIL, currentEffectiveMode(0L, s))
+    }
 }

@@ -1027,6 +1027,7 @@ private fun ModeTopSection(
     HorizontalDivider()
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun IntervalChips(currentMs: Long, onPick: (Long) -> Unit) {
     val options = listOf(
