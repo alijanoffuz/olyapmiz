@@ -207,6 +207,19 @@ enum class VisualTheme {
     COSMIC             // Space-themed
 }
 
+enum class TopViewMode { YIL, UMR }
+
+data class AutoSwitchSettings(
+    val enabled: Boolean = false,
+    val intervalMs: Long = 5_000L,
+    val referenceMs: Long = 0L,
+    val startMode: TopViewMode = TopViewMode.YIL,
+)
+
+data class UmrSettings(
+    val birthdayEpochMs: Long = 0L,
+)
+
 data class WallpaperSettings(
     val theme: ThemeOption = ThemeOption.DARK,
     val dotSize: DotSize = DotSize.MEDIUM,
@@ -229,8 +242,39 @@ data class WallpaperSettings(
     val glassEffectSettings: GlassEffectSettings = GlassEffectSettings(),
     val treeEffectSettings: TreeEffectSettings = TreeEffectSettings(),
     val fluidEffectSettings: FluidEffectSettings = FluidEffectSettings(),
-    val visualTheme: VisualTheme = VisualTheme.CLASSIC
+    val visualTheme: VisualTheme = VisualTheme.CLASSIC,
+    val topViewMode: TopViewMode = TopViewMode.YIL,
+    val autoSwitchSettings: AutoSwitchSettings = AutoSwitchSettings(),
+    val umrSettings: UmrSettings = UmrSettings(),
 )
+
+/**
+ * Resolve which view mode is currently effective.
+ *
+ * When auto-switch is off, returns the user-picked `topViewMode`.
+ * When auto-switch is on, returns the mode based on a wall-clock
+ * formula: `mode = floor((now - referenceMs) / intervalMs) % 2`,
+ * starting from `startMode`. This is a pure function and is called
+ * by the wallpaper engine on every draw. No state, no drift.
+ *
+ * Safety: if auto-switch is enabled but birthday is unset, returns
+ * YIL — Umr's "weeks lived" can't be computed without it.
+ */
+fun currentEffectiveMode(now: Long, settings: WallpaperSettings): TopViewMode {
+    val auto = settings.autoSwitchSettings
+    if (!auto.enabled) return settings.topViewMode
+    if (settings.umrSettings.birthdayEpochMs == 0L) return TopViewMode.YIL
+    val elapsed = now - auto.referenceMs
+    val ticks = if (auto.intervalMs > 0L) elapsed / auto.intervalMs else 0L
+    val startIsYil = auto.startMode == TopViewMode.YIL
+    val onStartSide = (ticks % 2L) == 0L
+    return when {
+        onStartSide && startIsYil -> TopViewMode.YIL
+        onStartSide && !startIsYil -> TopViewMode.UMR
+        !onStartSide && startIsYil -> TopViewMode.UMR
+        else -> TopViewMode.YIL
+    }
+}
 
 class LifeDotsPreferences(context: Context) {
 
@@ -298,6 +342,13 @@ class LifeDotsPreferences(context: Context) {
             // calendar renders at 18% offset, users drag from there if they
             // want a different position.
             editor.putFloat(KEY_VERTICAL_OFFSET, 18f)
+        }
+        if (stored < 9) {
+            // v9: introduces Umr life view + Yil/Umr auto-switch. No destructive
+            // writes — fresh installs and upgraders both pick up the data-class
+            // defaults (Yil selected, auto-switch off, birthday unset). The
+            // migration just marks the schema seen so future migrations can
+            // assume any v9-or-later state.
         }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
@@ -433,7 +484,19 @@ class LifeDotsPreferences(context: Context) {
             glassEffectSettings = glassEffectSettings,
             treeEffectSettings = treeEffectSettings,
             fluidEffectSettings = fluidEffectSettings,
-            visualTheme = visualTheme
+            visualTheme = visualTheme,
+            topViewMode = prefs.getString(KEY_TOP_VIEW_MODE, TopViewMode.YIL.name)
+                ?.let { runCatching { TopViewMode.valueOf(it) }.getOrNull() } ?: TopViewMode.YIL,
+            autoSwitchSettings = AutoSwitchSettings(
+                enabled = prefs.getBoolean(KEY_AUTO_SWITCH_ENABLED, false),
+                intervalMs = prefs.getLong(KEY_AUTO_SWITCH_INTERVAL_MS, 5_000L),
+                referenceMs = prefs.getLong(KEY_AUTO_SWITCH_REFERENCE_MS, 0L),
+                startMode = prefs.getString(KEY_AUTO_SWITCH_START_MODE, TopViewMode.YIL.name)
+                    ?.let { runCatching { TopViewMode.valueOf(it) }.getOrNull() } ?: TopViewMode.YIL,
+            ),
+            umrSettings = UmrSettings(
+                birthdayEpochMs = prefs.getLong(KEY_UMR_BIRTHDAY_MS, 0L),
+            ),
         )
     }
 
@@ -840,6 +903,71 @@ class LifeDotsPreferences(context: Context) {
         notifyWallpaperChanged()
     }
 
+    // ===== Umr / TopViewMode / Auto-switch setters =====
+    fun setTopViewMode(mode: TopViewMode) {
+        prefs.edit().putString(KEY_TOP_VIEW_MODE, mode.name).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(topViewMode = mode)
+        notifyWallpaperChanged()
+    }
+
+    /**
+     * Enable/disable the wall-clock-driven auto-switch.
+     *
+     * On enable, snapshot the current pick + wall-clock time into the
+     * "reference" so the first interval starts on whichever side the
+     * user is currently viewing. On disable, the formula falls back to
+     * `topViewMode` (no state-clearing needed besides the flag).
+     */
+    fun setAutoSwitchEnabled(enabled: Boolean) {
+        val current = _settingsFlow.value
+        val newAuto = if (enabled) {
+            current.autoSwitchSettings.copy(
+                enabled = true,
+                referenceMs = System.currentTimeMillis(),
+                startMode = current.topViewMode,
+            )
+        } else {
+            current.autoSwitchSettings.copy(enabled = false)
+        }
+        prefs.edit()
+            .putBoolean(KEY_AUTO_SWITCH_ENABLED, newAuto.enabled)
+            .putLong(KEY_AUTO_SWITCH_REFERENCE_MS, newAuto.referenceMs)
+            .putString(KEY_AUTO_SWITCH_START_MODE, newAuto.startMode.name)
+            .apply()
+        _settingsFlow.value = current.copy(autoSwitchSettings = newAuto)
+        notifyWallpaperChanged()
+    }
+
+    /**
+     * Set the auto-switch interval. Also resets reference to "now" so
+     * the new interval starts cleanly from the currently-rendering mode.
+     */
+    fun setAutoSwitchIntervalMs(intervalMs: Long) {
+        val current = _settingsFlow.value
+        val now = System.currentTimeMillis()
+        val nowMode = currentEffectiveMode(now, current)
+        val newAuto = current.autoSwitchSettings.copy(
+            intervalMs = intervalMs,
+            referenceMs = now,
+            startMode = nowMode,
+        )
+        prefs.edit()
+            .putLong(KEY_AUTO_SWITCH_INTERVAL_MS, newAuto.intervalMs)
+            .putLong(KEY_AUTO_SWITCH_REFERENCE_MS, newAuto.referenceMs)
+            .putString(KEY_AUTO_SWITCH_START_MODE, newAuto.startMode.name)
+            .apply()
+        _settingsFlow.value = current.copy(autoSwitchSettings = newAuto)
+        notifyWallpaperChanged()
+    }
+
+    fun setUmrBirthday(epochMs: Long) {
+        prefs.edit().putLong(KEY_UMR_BIRTHDAY_MS, epochMs).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(
+            umrSettings = _settingsFlow.value.umrSettings.copy(birthdayEpochMs = epochMs)
+        )
+        notifyWallpaperChanged()
+    }
+
     private fun notifyWallpaperChanged() {
         wallpaperChangeListeners.forEach { it.invoke() }
     }
@@ -852,7 +980,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 8
+        private const val CURRENT_MIGRATION_VERSION = 9
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
@@ -939,6 +1067,14 @@ class LifeDotsPreferences(context: Context) {
 
         // Visual Theme key
         private const val KEY_VISUAL_THEME = "visual_theme"
+
+        // Top view mode + auto-switch + Umr keys
+        private const val KEY_TOP_VIEW_MODE = "top_view_mode"
+        private const val KEY_AUTO_SWITCH_ENABLED = "auto_switch_enabled"
+        private const val KEY_AUTO_SWITCH_INTERVAL_MS = "auto_switch_interval_ms"
+        private const val KEY_AUTO_SWITCH_REFERENCE_MS = "auto_switch_reference_ms"
+        private const val KEY_AUTO_SWITCH_START_MODE = "auto_switch_start_mode"
+        private const val KEY_UMR_BIRTHDAY_MS = "umr_birthday_ms"
 
         private val wallpaperChangeListeners = mutableListOf<() -> Unit>()
 
