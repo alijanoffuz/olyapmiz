@@ -50,6 +50,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.lifedots.preferences.Goal
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -72,11 +75,21 @@ fun GoalEditorDialog(
     onDismiss: () -> Unit
 ) {
     var title by remember { mutableStateOf(goal?.title ?: "") }
-    var targetDate by remember { mutableLongStateOf(goal?.targetDate ?: getDefaultTargetDate()) }
+    val initialDate: LocalDate? = remember(goal) {
+        goal?.targetDate?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate() }
+    }
+    var dayText by remember { mutableStateOf(initialDate?.dayOfMonth?.toString()?.padStart(2, '0') ?: "") }
+    var monthText by remember { mutableStateOf(initialDate?.monthValue?.toString()?.padStart(2, '0') ?: "") }
+    var yearText by remember { mutableStateOf(initialDate?.year?.toString() ?: "") }
     var selectedColor by remember { mutableIntStateOf(goal?.color ?: 0xFF2D75A8.toInt()) }
-    var showDatePicker by remember { mutableStateOf(false) }
 
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
+    val resolvedDate: LocalDate? = remember(dayText, monthText, yearText) {
+        val d = dayText.toIntOrNull()
+        val m = monthText.toIntOrNull()
+        val y = yearText.toIntOrNull()
+        if (d == null || m == null || y == null) null
+        else runCatching { LocalDate.of(y, m, d) }.getOrNull()
+    }
     val presetColors = listOf(
         0xFF2D75A8.toInt(),
         0xFF6B8C3B.toInt(),
@@ -140,7 +153,7 @@ fun GoalEditorDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = if (goal == null) "Add Goal" else "Edit Goal",
+                        text = if (goal == null) "Add Event" else "Edit Event",
                         color = DialogGold,
                         fontFamily = FontFamily.Serif,
                         fontSize = 31.sp,
@@ -166,9 +179,13 @@ fun GoalEditorDialog(
                     fontSize = 21.sp,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                GoalDatePill(
-                    text = dateFormatter.format(Date(targetDate)),
-                    onClick = { showDatePicker = true },
+                DateNumberInputs(
+                    dayText = dayText,
+                    monthText = monthText,
+                    yearText = yearText,
+                    onDayChange = { dayText = it },
+                    onMonthChange = { monthText = it },
+                    onYearChange = { yearText = it },
                 )
 
                 Spacer(modifier = Modifier.height(18.dp))
@@ -205,15 +222,17 @@ fun GoalEditorDialog(
                         modifier = Modifier.weight(1f),
                     )
                     DialogSaveButton(
-                        text = "Save Goal",
-                        enabled = title.isNotBlank(),
+                        text = "Save Event",
+                        enabled = title.isNotBlank() && resolvedDate != null,
                         onClick = {
-                            if (title.isNotBlank()) {
+                            val date = resolvedDate
+                            if (title.isNotBlank() && date != null) {
+                                val targetMs = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                                 onSave(
                                     Goal(
                                         id = goal?.id ?: UUID.randomUUID().toString(),
                                         title = title.trim(),
-                                        targetDate = targetDate,
+                                        targetDate = targetMs,
                                         color = selectedColor,
                                     )
                                 )
@@ -228,16 +247,6 @@ fun GoalEditorDialog(
         }
     }
 
-    if (showDatePicker) {
-        DatePickerDialog(
-            initialDate = targetDate,
-            onDateSelected = { date ->
-                targetDate = date
-                showDatePicker = false
-            },
-            onDismiss = { showDatePicker = false },
-        )
-    }
 }
 
 @Composable
@@ -300,7 +309,7 @@ private fun GoalParchmentInput(
         }
         Column(modifier = Modifier.align(Alignment.CenterStart)) {
             Text(
-                text = "Goal Title",
+                text = "Event Title",
                 color = PaperInk,
                 fontFamily = FontFamily.Serif,
                 fontSize = 18.sp,
@@ -310,7 +319,7 @@ private fun GoalParchmentInput(
             Box {
                 if (title.isBlank()) {
                     Text(
-                        text = "Enter your goal...",
+                        text = "Enter event title...",
                         color = PaperInk.copy(alpha = 0.58f),
                         fontFamily = FontFamily.Serif,
                         fontStyle = FontStyle.Italic,

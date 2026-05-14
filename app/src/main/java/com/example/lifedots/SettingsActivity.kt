@@ -540,63 +540,30 @@ internal fun ModernSettingsContent(
             }
         }
 
-        item {
-            ModernSectionTitle("GOAL COUNTDOWN")
-            ModernPanelCard {
-                ModernSettingRow(
-                    icon = SettingIcon.Target,
-                    title = "Enable Goals",
-                    subtitle = "Countdown to important dates",
-                    trailing = {
-                        ModernSwitch(
-                            checked = settings.goalSettings.enabled,
-                            onCheckedChange = { preferences.setGoalsEnabled(it) },
-                        )
-                    },
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Position",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            text = "Where countdown appears",
-                            color = ModernTextMuted,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                        )
-                    }
-                    ModernGoalPositionButton(
-                        label = "Top",
-                        selected = settings.goalSettings.position == GoalPosition.TOP,
-                        position = GoalPosition.TOP,
-                        onClick = { preferences.setGoalsPosition(GoalPosition.TOP) },
+        if (settings.topViewMode == TopViewMode.UMR) {
+            item {
+                ModernSectionTitle("EVENTS")
+                ModernPanelCard {
+                    ModernSettingRow(
+                        icon = SettingIcon.Target,
+                        title = "Enable Events",
+                        subtitle = "Mark important dates on your life calendar",
+                        trailing = {
+                            ModernSwitch(
+                                checked = settings.goalSettings.enabled,
+                                onCheckedChange = { preferences.setGoalsEnabled(it) },
+                            )
+                        },
                     )
-                    ModernGoalPositionButton(
-                        label = "Bottom",
-                        selected = settings.goalSettings.position == GoalPosition.BOTTOM,
-                        position = GoalPosition.BOTTOM,
-                        onClick = { preferences.setGoalsPosition(GoalPosition.BOTTOM) },
-                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    ModernPrimaryButton(text = "+  Add Event", onClick = onAddGoal)
                 }
-
-                Spacer(modifier = Modifier.height(18.dp))
-                ModernPrimaryButton(text = "+  Add Goal", onClick = onAddGoal)
             }
-        }
 
-        if (settings.goalSettings.goals.isNotEmpty()) {
-            items(settings.goalSettings.goals, key = { it.id }) { goal ->
-                ModernGoalItem(goal = goal, onClick = { onEditGoal(goal) })
+            if (settings.goalSettings.goals.isNotEmpty()) {
+                items(settings.goalSettings.goals, key = { it.id }) { goal ->
+                    ModernGoalItem(goal = goal, onClick = { onEditGoal(goal) })
+                }
             }
         }
     }

@@ -361,10 +361,8 @@ class LifeDotsWallpaperService : WallpaperService() {
             // grid + countdown lines below year stats, drawn inside drawCalendarView.
             val isCalendarModeEarly = !settings.treeEffectSettings.enabled &&
                 settings.viewModeSettings.mode == ViewMode.CALENDAR
-            if (!isCalendarModeEarly && settings.goalSettings.enabled &&
-                settings.goalSettings.position == GoalPosition.TOP) {
-                drawGoals(canvas, settings.goalSettings, colors, 0f, canvas.width.toFloat())
-            }
+            // Goal countdown rendering removed in Yil — events are now a
+            // Umr-only feature (Round 4 renders them on the life grid).
 
             // Apply position and scale transformations
             val positionSettings = settings.positionSettings
@@ -410,12 +408,7 @@ class LifeDotsWallpaperService : WallpaperService() {
                 canvas.restore()
             }
 
-            // Floating goals list at bottom — same rule as top: skip in Calendar mode.
-            if (!isCalendarModeEarly && settings.goalSettings.enabled &&
-                settings.goalSettings.position == GoalPosition.BOTTOM) {
-                val goalY = canvas.height - bottomOffset + 20f
-                drawGoals(canvas, settings.goalSettings, colors, goalY, canvas.width.toFloat())
-            }
+            // Goal-countdown bottom rendering removed — events are Umr-only now.
 
             // Feature 2: Draw footer text if enabled
             if (settings.footerTextSettings.enabled) {
@@ -424,20 +417,15 @@ class LifeDotsWallpaperService : WallpaperService() {
         }
 
         private fun calculateTopOffset(width: Int, height: Int, settings: WallpaperSettings): Float {
-            var offset = height * 0.06f
-            if (settings.goalSettings.enabled && settings.goalSettings.position == GoalPosition.TOP) {
-                offset += 80f + (settings.goalSettings.goals.size * 30f)
-            }
-            return offset
+            // Goals were previously reserving space here in Yil; Round 3
+            // moved them to a Umr-only concept so no extra top reserve.
+            return height * 0.06f
         }
 
         private fun calculateBottomOffset(width: Int, height: Int, settings: WallpaperSettings): Float {
             var offset = height * 0.06f
             if (settings.footerTextSettings.enabled && settings.footerTextSettings.text.isNotEmpty()) {
                 offset += 60f
-            }
-            if (settings.goalSettings.enabled && settings.goalSettings.position == GoalPosition.BOTTOM) {
-                offset += 80f + (settings.goalSettings.goals.size * 30f)
             }
             return offset
         }
