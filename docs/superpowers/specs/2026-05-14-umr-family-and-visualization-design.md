@@ -279,6 +279,12 @@ Counters re-read from prefs on every redraw — no new scheduler. Weekly transit
 
 ---
 
+### 4.7 Month grouping inside each row
+
+Each 52-week row is broken into **13 groups of 4 cells** with a slightly wider gap between groups (1.6× the regular dot gap). This gives each row a visual "month rhythm" — months become legible at a glance without overlaying any grid lines. Math is centralised in a new `UmrLayoutCompute.cellCenter(layout, cellIndex)` helper so the wallpaper dot loop and the parent-ring drawer never go out of sync.
+
+---
+
 ## 5. Layout — UmrLayoutCompute
 
 ```kotlin

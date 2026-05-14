@@ -420,6 +420,18 @@ Add three fields to the existing `data class UmrLayout(...)` — keep all existi
 
 (If `safeTopPx` is already a field, leave it; if not, add it too for the test.)
 
+- [ ] **Step 4.4b: Update the wallpaper dot loop to use `gridTopPx`**
+
+In `LifeDotsWallpaperService.kt` at line ~891, the existing `cy` calculation reads:
+```kotlin
+                val cy = layout.safeTopPx + row * (layout.dotSizePx + layout.dotGapPx) + r
+```
+Replace `layout.safeTopPx` with `layout.gridTopPx`:
+```kotlin
+                val cy = layout.gridTopPx + row * (layout.dotSizePx + layout.dotGapPx) + r
+```
+This shifts the grid down by `counterBandHeightPx` to make room for the counter band introduced in this task.
+
 - [ ] **Step 4.5: Add `counterBandRatio` + reserve band height in `compute()`**
 
 Inside `UmrLayoutCompute` (above `compute()`), add:
@@ -479,6 +491,180 @@ counterBandRatio() that returns 5-6% of canvas height depending on
 aspect. compute() now subtracts the band from availHeight so the dot
 grid sizes down to fit. Existing layout tests still pass; new test
 asserts the band > 0 and gridTopPx alignment.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+## Task 4b: Add per-month visual gap inside each row
+
+Splits each row of 52 weeks into 13 groups of 4, with a slightly wider horizontal gap between groups so the eye reads months at a glance. Also factors cell-centre math into a single `UmrLayoutCompute.cellCenter()` helper so the month-gap offset lives in one place — the wallpaper dot loop and the upcoming parent-ring task share it.
+
+**Files:**
+- Modify: `app/src/main/java/com/example/lifedots/wallpaper/CalendarLayout.kt`
+- Modify: `app/src/main/java/com/example/lifedots/wallpaper/LifeDotsWallpaperService.kt` (dot loop only)
+- Modify: `app/src/test/java/com/example/lifedots/wallpaper/UmrLayoutComputeTest.kt`
+
+- [ ] **Step 4b.1: Add a failing test**
+
+Append to `UmrLayoutComputeTest.kt`:
+
+```kotlin
+    @Test fun `each row has a wider gap every 4 weeks for month grouping`() {
+        val l = compute(1080, 2400)
+        assertTrue("month gap must be wider than regular gap", l.monthGapPx > l.dotGapPx)
+        // 13 groups of 4 in 52 cols => 12 month-gap insertions per row
+        val regularGaps = (UmrLayoutCompute.COLS - 1) - 12
+        val expectedWidth = UmrLayoutCompute.COLS * l.dotSizePx +
+                            regularGaps * l.dotGapPx +
+                            12 * l.monthGapPx
+        assertEquals(
+            "gridWidthPx must include month gaps",
+            expectedWidth,
+            l.gridWidthPx,
+            0.5f,
+        )
+    }
+
+    @Test fun `cellCenter shifts horizontally past month boundaries`() {
+        val l = compute(1080, 2400)
+        val (cx3, _) = UmrLayoutCompute.cellCenter(l, 3)   // last cell in group 0
+        val (cx4, _) = UmrLayoutCompute.cellCenter(l, 4)   // first cell in group 1
+        // Gap between cell 3 and cell 4 should equal dotSize + monthGap, not dotSize + dotGap.
+        val gap34 = (cx4 - cx3) - l.dotSizePx
+        assertEquals("col 3 -> col 4 must use month gap", l.monthGapPx, gap34, 0.5f)
+    }
+```
+
+- [ ] **Step 4b.2: Run — expect compile/assertion failure**
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools PATH=$JAVA_HOME/bin:$PATH ./gradlew :app:testReleaseUnitTest --tests "com.example.lifedots.wallpaper.UmrLayoutComputeTest"
+```
+
+Expected: FAIL — `monthGapPx` and `cellCenter` don't exist yet.
+
+- [ ] **Step 4b.3: Extend `UmrLayout` data class with `monthGapPx`**
+
+In `CalendarLayout.kt`, add to the existing `data class UmrLayout(...)`:
+
+```kotlin
+    val monthGapPx: Float = 0f,
+```
+
+- [ ] **Step 4b.4: Add constants + helper to `UmrLayoutCompute`**
+
+Inside the `object UmrLayoutCompute`, alongside the existing `ROWS`, `COLS`, etc., add:
+
+```kotlin
+    /** Insert a wider horizontal gap every WEEKS_PER_GROUP columns so months read at a glance. */
+    const val WEEKS_PER_GROUP = 4
+
+    /** Number of month-gap insertions per row: between each group of 4. */
+    val MONTH_GAPS_PER_ROW: Int = (COLS - 1) / WEEKS_PER_GROUP
+
+    /** Month gap is 1.6 × the regular dot-gap. Small enough to keep density, big enough to read. */
+    private const val MONTH_GAP_MULTIPLIER: Float = 1.6f
+```
+
+- [ ] **Step 4b.5: Update `compute()` width math**
+
+In `compute()`, replace the existing `maxDotByWidth` line with:
+
+```kotlin
+        // gridWidth = COLS*d + (COLS-1-MONTH_GAPS_PER_ROW)*gap + MONTH_GAPS_PER_ROW*monthGap
+        // monthGap = gap * MONTH_GAP_MULTIPLIER, gap = gapRatio * d
+        // => d = availWidth / (COLS + gapRatio * ((COLS-1-MG) + MG*MULT))
+        val regularGapsPerRow = (COLS - 1) - MONTH_GAPS_PER_ROW
+        val totalGapUnitsPerRow = regularGapsPerRow + MONTH_GAPS_PER_ROW * MONTH_GAP_MULTIPLIER
+        val maxDotByWidth = availWidth / (COLS + totalGapUnitsPerRow * gapRatio)
+```
+
+After `dotGapPx` is computed, add:
+```kotlin
+        val monthGapPx = dotGapPx * MONTH_GAP_MULTIPLIER
+```
+
+Update `gridWidthPx`:
+```kotlin
+        val gridWidthPx = COLS * dotSizePx +
+            ((COLS - 1) - MONTH_GAPS_PER_ROW) * dotGapPx +
+            MONTH_GAPS_PER_ROW * monthGapPx
+```
+
+Pass `monthGapPx = monthGapPx` to the `UmrLayout(...)` constructor at the end.
+
+- [ ] **Step 4b.6: Add `cellCenter()` helper**
+
+Inside `object UmrLayoutCompute`, after `compute()`:
+
+```kotlin
+    /**
+     * Pixel centre for cell index `i` (0-based). Accounts for both the regular
+     * dot gap and the extra month-gap inserted every WEEKS_PER_GROUP cells.
+     * Single source of truth — used by the dot loop and the parent rings.
+     */
+    fun cellCenter(layout: UmrLayout, cellIndex: Int): Pair<Float, Float> {
+        val row = cellIndex / COLS
+        val col = cellIndex % COLS
+        val groupIndex = col / WEEKS_PER_GROUP
+        val step = layout.dotSizePx + layout.dotGapPx
+        val monthOffset = groupIndex * (layout.monthGapPx - layout.dotGapPx)
+        val r = layout.dotSizePx / 2f
+        val cx = layout.gridLeftPx + col * step + monthOffset + r
+        val cy = layout.gridTopPx + row * step + r
+        return cx to cy
+    }
+```
+
+- [ ] **Step 4b.7: Replace the inline cx/cy math in the wallpaper dot loop**
+
+In `LifeDotsWallpaperService.kt` at lines ~887-891, replace:
+
+```kotlin
+            for (i in 0 until totalCells) {
+                val row = i / UmrLayoutCompute.COLS
+                val col = i % UmrLayoutCompute.COLS
+                val cx = layout.gridLeftPx + col * (layout.dotSizePx + layout.dotGapPx) + r
+                val cy = layout.gridTopPx + row * (layout.dotSizePx + layout.dotGapPx) + r
+```
+
+with:
+
+```kotlin
+            for (i in 0 until totalCells) {
+                val (cx, cy) = UmrLayoutCompute.cellCenter(layout, i)
+```
+
+(Drop the now-unused `row` / `col` locals from this block. If they're referenced later in the loop body, leave them.)
+
+- [ ] **Step 4b.8: Run the tests — expect green**
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools PATH=$JAVA_HOME/bin:$PATH ./gradlew :app:testReleaseUnitTest --tests "com.example.lifedots.wallpaper.UmrLayoutComputeTest"
+```
+
+Expected: BUILD SUCCESSFUL, all tests pass.
+
+- [ ] **Step 4b.9: Commit**
+
+```bash
+git add app/src/main/java/com/example/lifedots/wallpaper/CalendarLayout.kt \
+        app/src/main/java/com/example/lifedots/wallpaper/LifeDotsWallpaperService.kt \
+        app/src/test/java/com/example/lifedots/wallpaper/UmrLayoutComputeTest.kt
+git commit -m "$(cat <<'EOF'
+wallpaper: 13 month-groups per Umr row (4 cells + extra gap)
+
+Splits each 52-week row into 13 groups of 4 cells with a wider
+horizontal gap (1.6x regular gap) between groups, giving each row
+a "month rhythm" that reads at a glance. Adds monthGapPx to
+UmrLayout, recomputes dotSize accounting for 12 month-gap
+insertions per row, and centralises cx/cy math in a new
+UmrLayoutCompute.cellCenter() helper that the wallpaper dot loop
+and the upcoming parent-ring drawer both consume.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -728,20 +914,9 @@ Near the other paint declarations:
         }
 ```
 
-- [ ] **Step 8.2: Helper to find a cell centre**
+- [ ] **Step 8.2: Use the shared `cellCenter()` helper**
 
-In the `Engine` class scope (or inline in `drawUmrView`), add this private helper near `drawUmrView`:
-
-```kotlin
-        private fun umrCellCenter(layout: UmrLayout, cellIndex: Int): Pair<Float, Float> {
-            val row = cellIndex / UmrLayoutCompute.COLS
-            val col = cellIndex % UmrLayoutCompute.COLS
-            val step = layout.dotSizePx + layout.dotGapPx
-            val cx = layout.gridLeftPx + col * step + layout.dotSizePx / 2f
-            val cy = layout.gridTopPx + row * step + layout.dotSizePx / 2f
-            return cx to cy
-        }
-```
+The `UmrLayoutCompute.cellCenter(layout, cellIndex)` function added in Task 4b is the single source of truth for cell positions (including the month-gap offset). No new helper needed here.
 
 - [ ] **Step 8.3: Draw the rings after the dot loop**
 
@@ -757,12 +932,12 @@ In `drawUmrView`, **after** the existing `for (i in 0 until totalCells)` loop en
 
             val momCell = weekIndexFor(settings.umrSettings.momBirthdayEpochMs, now)
             if (momCell >= 0) {
-                val (cx, cy) = umrCellCenter(layout, momCell)
+                val (cx, cy) = UmrLayoutCompute.cellCenter(layout, momCell)
                 canvas.drawCircle(cx, cy, ringRadius, umrMomRingPaint)
             }
             val dadCell = weekIndexFor(settings.umrSettings.dadBirthdayEpochMs, now)
             if (dadCell >= 0) {
-                val (cx, cy) = umrCellCenter(layout, dadCell)
+                val (cx, cy) = UmrLayoutCompute.cellCenter(layout, dadCell)
                 canvas.drawCircle(cx, cy, ringRadius, umrDadRingPaint)
             }
 ```
