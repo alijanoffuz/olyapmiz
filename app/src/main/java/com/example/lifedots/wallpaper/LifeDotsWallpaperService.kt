@@ -900,8 +900,10 @@ class LifeDotsWallpaperService : WallpaperService() {
             // Background
             canvas.drawColor(colors.background)
 
-            // Apply position transform (horizontal/vertical offset + scale) like Yil does.
-            val position = settings.positionSettings
+            // Apply position transform (horizontal/vertical offset + scale).
+            // Umr has its OWN position so users can park the grid where they
+            // want without disturbing Yil — defaults to vertical 7%.
+            val position = settings.umrSettings.position
             val offsetX = canvas.width * (position.horizontalOffset / 100f)
             val offsetY = canvas.height * (position.verticalOffset / 100f)
             canvas.save()
@@ -909,15 +911,19 @@ class LifeDotsWallpaperService : WallpaperService() {
             canvas.scale(position.scale, position.scale, canvas.width / 2f, canvas.height / 2f)
 
             // Configure class-level paints once per draw (avoids per-frame allocation).
+            // Umr reads its own livedAlpha/emptyAlpha so Yil's transparency
+            // sliders never affect the Umr grid.
+            val umrLived = (settings.umrSettings.livedAlpha * 255f).toInt().coerceIn(0, 255)
+            val umrEmpty = (settings.umrSettings.emptyAlpha * 255f).toInt().coerceIn(0, 255)
             umrFilledPaint.color = colors.filledDot
-            umrFilledPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrFilledPaint.alpha = umrLived
             umrCrossPaint.color = colors.filledDot
-            umrCrossPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrCrossPaint.alpha = umrLived
             umrCrossPaint.strokeWidth = layout.dotSizePx * 0.18f
             umrEmptyPaint.color =
                 if (settings.umrSettings.visualMode == UmrVisualMode.X_MARKS) 0xFFFFFFFF.toInt()
                 else colors.emptyDot
-            umrEmptyPaint.alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrEmptyPaint.alpha = umrEmpty
             umrTodayPaint.color = colors.todayDot
             umrTodayPaint.alpha = 255
             umrGlowPaint.color = colors.todayDot

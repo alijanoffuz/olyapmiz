@@ -242,6 +242,10 @@ data class UmrSettings(
     val livedAlpha: Float = 1.0f,
     val emptyAlpha: Float = 0.6f,
     val totalWeeks: Int = 4000,
+    // Umr-only position. Yil uses WallpaperSettings.positionSettings.
+    // Default vertical offset 7% — the 80x52 grid sits a touch lower on the
+    // canvas than Yil because the top counter band needs breathing room.
+    val position: PositionSettings = PositionSettings(verticalOffset = 7f),
 )
 
 data class WallpaperSettings(
@@ -563,6 +567,11 @@ class LifeDotsPreferences(context: Context) {
                 livedAlpha = prefs.getFloat(KEY_UMR_LIVED_ALPHA, 1.0f),
                 emptyAlpha = prefs.getFloat(KEY_UMR_EMPTY_ALPHA, 0.6f),
                 totalWeeks = prefs.getInt(KEY_UMR_TOTAL_WEEKS, 4000),
+                position = PositionSettings(
+                    horizontalOffset = prefs.getFloat(KEY_UMR_HORIZONTAL_OFFSET, 0f),
+                    verticalOffset = prefs.getFloat(KEY_UMR_VERTICAL_OFFSET, 7f),
+                    scale = prefs.getFloat(KEY_UMR_SCALE, 1.0f),
+                ),
             ),
             soundsEnabled = prefs.getBoolean(KEY_SOUNDS_ENABLED, true),
             vibrationsEnabled = prefs.getBoolean(KEY_VIBRATIONS_ENABLED, true),
@@ -858,6 +867,40 @@ class LifeDotsPreferences(context: Context) {
         notifyWallpaperChanged()
     }
 
+    // ===== Umr-only Position setters =====
+    fun setUmrHorizontalOffset(offset: Float) {
+        prefs.edit().putFloat(KEY_UMR_HORIZONTAL_OFFSET, offset).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(
+                position = current.umrSettings.position.copy(horizontalOffset = offset)
+            )
+        )
+        notifyWallpaperChanged()
+    }
+
+    fun setUmrVerticalOffset(offset: Float) {
+        prefs.edit().putFloat(KEY_UMR_VERTICAL_OFFSET, offset).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(
+                position = current.umrSettings.position.copy(verticalOffset = offset)
+            )
+        )
+        notifyWallpaperChanged()
+    }
+
+    fun setUmrScale(scale: Float) {
+        prefs.edit().putFloat(KEY_UMR_SCALE, scale).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(
+                position = current.umrSettings.position.copy(scale = scale)
+            )
+        )
+        notifyWallpaperChanged()
+    }
+
     // ===== Animation Settings setters =====
     fun setAnimationEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ANIMATION_ENABLED, enabled).apply()
@@ -1123,15 +1166,18 @@ class LifeDotsPreferences(context: Context) {
         }
         prefs.edit()
             .putString(KEY_UMR_VISUAL_MODE, mode.name)
-            .putFloat(KEY_FILLED_DOT_ALPHA, lived)
-            .putFloat(KEY_EMPTY_DOT_ALPHA, empty)
+            .putFloat(KEY_UMR_LIVED_ALPHA, lived)
+            .putFloat(KEY_UMR_EMPTY_ALPHA, empty)
             .apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
-            umrSettings = current.umrSettings.copy(visualMode = mode),
-            filledDotAlpha = lived,
-            emptyDotAlpha = empty,
+            umrSettings = current.umrSettings.copy(
+                visualMode = mode,
+                livedAlpha = lived,
+                emptyAlpha = empty,
+            )
         )
+        notifyWallpaperChanged()
     }
 
     fun setSoundsEnabled(enabled: Boolean) {
@@ -1213,6 +1259,11 @@ class LifeDotsPreferences(context: Context) {
         // Umr Event Tracking keys (separate from goals — events can be past or future)
         private const val KEY_EVENTS_ENABLED = "umr_events_enabled"
         private const val KEY_EVENTS_JSON = "umr_events_json"
+
+        // Umr position keys (independent of Yil's positionSettings)
+        private const val KEY_UMR_HORIZONTAL_OFFSET = "umr_horizontal_offset"
+        private const val KEY_UMR_VERTICAL_OFFSET = "umr_vertical_offset"
+        private const val KEY_UMR_SCALE = "umr_scale"
 
         // Position Settings keys
         private const val KEY_HORIZONTAL_OFFSET = "horizontal_offset"

@@ -447,22 +447,33 @@ internal fun ModernSettingsContent(
         }
 
         item {
+            // Transparency is per-mode. Yil and Umr each save their own
+            // sliders so changing one doesn't disturb the other.
+            val isUmr = settings.topViewMode == TopViewMode.UMR
+            val filledValue = if (isUmr) settings.umrSettings.livedAlpha else settings.filledDotAlpha
+            val emptyValue  = if (isUmr) settings.umrSettings.emptyAlpha  else settings.emptyDotAlpha
             ModernSectionTitle("TRANSPARENCY")
             ModernPanelCard {
                 ModernPercentSlider(
                     title = "Filled Dots",
                     subtitle = "Opacity of past days",
-                    value = settings.filledDotAlpha,
-                    valueText = "${(settings.filledDotAlpha * 100).roundToInt()}%",
-                    onValueChange = { preferences.setFilledDotAlpha(it) },
+                    value = filledValue,
+                    valueText = "${(filledValue * 100).roundToInt()}%",
+                    onValueChange = {
+                        if (isUmr) preferences.setUmrLivedAlpha(it)
+                        else preferences.setFilledDotAlpha(it)
+                    },
                 )
                 ModernDivider()
                 ModernPercentSlider(
                     title = "Empty Dots",
                     subtitle = "Opacity of future days",
-                    value = settings.emptyDotAlpha,
-                    valueText = "${(settings.emptyDotAlpha * 100).roundToInt()}%",
-                    onValueChange = { preferences.setEmptyDotAlpha(it) },
+                    value = emptyValue,
+                    valueText = "${(emptyValue * 100).roundToInt()}%",
+                    onValueChange = {
+                        if (isUmr) preferences.setUmrEmptyAlpha(it)
+                        else preferences.setEmptyDotAlpha(it)
+                    },
                 )
             }
         }
@@ -534,34 +545,46 @@ internal fun ModernSettingsContent(
         }
 
         item {
+            // Position is per-mode (Yil 0%/0%/100% default, Umr 0%/7%/100% default).
+            val isUmr = settings.topViewMode == TopViewMode.UMR
+            val pos = if (isUmr) settings.umrSettings.position else settings.positionSettings
             ModernSectionTitle("POSITION & SCALE")
             ModernPanelCard {
                 ModernOffsetRow(
                     icon = SettingIcon.Horizontal,
                     title = "Horizontal Offset",
                     subtitle = "Move left or right",
-                    value = settings.positionSettings.horizontalOffset,
+                    value = pos.horizontalOffset,
                     valueRange = -50f..50f,
-                    valueText = "${settings.positionSettings.horizontalOffset.roundToInt()}%",
-                    onValueChange = { preferences.setHorizontalOffset(it) },
+                    valueText = "${pos.horizontalOffset.roundToInt()}%",
+                    onValueChange = {
+                        if (isUmr) preferences.setUmrHorizontalOffset(it)
+                        else preferences.setHorizontalOffset(it)
+                    },
                 )
                 ModernOffsetRow(
                     icon = SettingIcon.Vertical,
                     title = "Vertical Offset",
                     subtitle = "Move up or down",
-                    value = settings.positionSettings.verticalOffset,
+                    value = pos.verticalOffset,
                     valueRange = -50f..50f,
-                    valueText = "${settings.positionSettings.verticalOffset.roundToInt()}%",
-                    onValueChange = { preferences.setVerticalOffset(it) },
+                    valueText = "${pos.verticalOffset.roundToInt()}%",
+                    onValueChange = {
+                        if (isUmr) preferences.setUmrVerticalOffset(it)
+                        else preferences.setVerticalOffset(it)
+                    },
                 )
                 ModernOffsetRow(
                     icon = SettingIcon.Scale,
                     title = "Scale",
                     subtitle = "Resize the entire grid",
-                    value = settings.positionSettings.scale,
+                    value = pos.scale,
                     valueRange = 0.5f..1.5f,
-                    valueText = "${(settings.positionSettings.scale * 100).roundToInt()}%",
-                    onValueChange = { preferences.setScale(it) },
+                    valueText = "${(pos.scale * 100).roundToInt()}%",
+                    onValueChange = {
+                        if (isUmr) preferences.setUmrScale(it)
+                        else preferences.setScale(it)
+                    },
                 )
             }
         }
