@@ -41,7 +41,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -107,20 +110,25 @@ import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.preferences.TextAlignment
 import com.example.lifedots.preferences.ThemeOption
 import com.example.lifedots.preferences.TopViewMode
-import com.example.lifedots.ui.screens.YilSettingsScreen
-import com.example.lifedots.ui.screens.UmrSettingsScreen
+import com.example.lifedots.preferences.UmrVisualMode
 import com.example.lifedots.preferences.TreeStyle
 import com.example.lifedots.preferences.ViewMode
 import com.example.lifedots.preferences.VisualTheme
 import com.example.lifedots.preferences.WallpaperSettings
 import com.example.lifedots.ui.components.ColorButton
 import com.example.lifedots.ui.components.ColorPickerDialog
+import com.example.lifedots.ui.components.DateNumberInputs
 import com.example.lifedots.ui.components.GoalEditorDialog
 import com.example.lifedots.ui.components.ModeTogglePill
+import com.example.lifedots.ui.components.WhoTab
+import com.example.lifedots.ui.components.WhoTabs
 import com.example.lifedots.ui.theme.LifeDotsTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import kotlin.math.cos
@@ -225,22 +233,15 @@ fun SettingsScreen(
         }
     }
 
-    when (settings.topViewMode) {
-        TopViewMode.YIL -> YilSettingsScreen(
-            settings = settings,
-            preferences = preferences,
-            snackbarHostState = snackbarHostState,
-            scope = scope,
-            onAddGoal = { editingGoal = null; showGoalEditor = true },
-            onEditGoal = { goal -> editingGoal = goal; showGoalEditor = true },
-            modifier = modifier,
-        )
-        TopViewMode.UMR -> UmrSettingsScreen(
-            settings = settings,
-            preferences = preferences,
-            modifier = modifier,
-        )
-    }
+    ModernSettingsContent(
+        settings = settings,
+        preferences = preferences,
+        snackbarHostState = snackbarHostState,
+        scope = scope,
+        onAddGoal = { editingGoal = null; showGoalEditor = true },
+        onEditGoal = { goal -> editingGoal = goal; showGoalEditor = true },
+        modifier = modifier,
+    )
 
     if (showGoalEditor) {
         GoalEditorDialog(
@@ -295,6 +296,8 @@ internal fun ModernSettingsContent(
     modifier: Modifier = Modifier,
 ) {
     val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
+    var showLifeDataEditor by remember { mutableStateOf(false) }
+    var editingWho by remember { mutableStateOf(WhoTab.ME) }
 
     LaunchedEffect(settings.viewModeSettings.mode, settings.viewModeSettings.showMonthLabels) {
         if (settings.viewModeSettings.mode != ViewMode.CALENDAR) {
@@ -350,6 +353,26 @@ internal fun ModernSettingsContent(
                     preferences.setAutoSwitchIntervalMs(ms)
                 },
             )
+        }
+
+        if (settings.topViewMode == TopViewMode.UMR) {
+            item {
+                LifeDataCard(
+                    meMs = settings.umrSettings.birthdayEpochMs,
+                    dadMs = settings.umrSettings.dadBirthdayEpochMs,
+                    momMs = settings.umrSettings.momBirthdayEpochMs,
+                    onClick = {
+                        editingWho = WhoTab.ME
+                        showLifeDataEditor = true
+                    },
+                )
+            }
+            item {
+                VisualizationSection(
+                    current = settings.umrSettings.visualMode,
+                    onChange = { preferences.setUmrVisualMode(it) },
+                )
+            }
         }
 
         item {
@@ -570,6 +593,15 @@ internal fun ModernSettingsContent(
                 ModernGoalItem(goal = goal, onClick = { onEditGoal(goal) })
             }
         }
+    }
+
+    if (showLifeDataEditor) {
+        LifeDataEditorSheet(
+            settings = settings,
+            preferences = preferences,
+            initialWho = editingWho,
+            onDismiss = { showLifeDataEditor = false },
+        )
     }
 }
 
@@ -2478,6 +2510,168 @@ fun FluidStyleOption(
                 fontSize = 9.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+    }
+}
+
+// ===== Umr-mode inline composables (used only when topViewMode == UMR) =====
+
+@Composable
+private fun LifeDataCard(
+    meMs: Long,
+    dadMs: Long,
+    momMs: Long,
+    onClick: () -> Unit,
+) {
+    val fmt = remember { SimpleDateFormat("d MMMM yyyy", Locale.getDefault()) }
+    ModernSectionTitle("LIFE DATA")
+    ModernPanelCard(
+        modifier = Modifier.clickable { onClick() },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            UmrDobRow("Me",  meMs,  fmt)
+            UmrDobRow("Dad", dadMs, fmt)
+            UmrDobRow("Mom", momMs, fmt)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Tap to edit",
+            color = ModernGoldMuted,
+            fontSize = 11.sp,
+        )
+    }
+}
+
+@Composable
+private fun UmrDobRow(label: String, ms: Long, fmt: SimpleDateFormat) {
+    Row {
+        Text("$label  ", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+        Text(
+            if (ms > 0L) fmt.format(Date(ms)) else "Not set",
+            color = Color(0xFFEDE8DE),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun VisualizationSection(
+    current: UmrVisualMode,
+    onChange: (UmrVisualMode) -> Unit,
+) {
+    ModernSectionTitle("VISUALIZATION")
+    ModernPanelCard(contentPadding = 4.dp) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            for ((mode, label) in listOf(UmrVisualMode.DOTS to "Dots", UmrVisualMode.X_MARKS to "X-marks")) {
+                val isActive = mode == current
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            color = if (isActive) Color(0xFF1B1A16) else Color.Transparent,
+                            shape = RoundedCornerShape(10.dp),
+                        )
+                        .clickable { onChange(mode) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isActive) ModernGold else ModernGoldMuted,
+                        fontSize = 14.sp,
+                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun LifeDataEditorSheet(
+    settings: WallpaperSettings,
+    preferences: LifeDotsPreferences,
+    initialWho: WhoTab,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(initialWho) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val today = LocalDate.now()
+
+    fun msToLocal(ms: Long): LocalDate =
+        if (ms <= 0L) today
+        else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
+
+    fun localToMs(d: LocalDate): Long =
+        d.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    val current = when (selected) {
+        WhoTab.ME  -> msToLocal(settings.umrSettings.birthdayEpochMs)
+        WhoTab.DAD -> msToLocal(settings.umrSettings.dadBirthdayEpochMs)
+        WhoTab.MOM -> msToLocal(settings.umrSettings.momBirthdayEpochMs)
+    }
+    var picked by remember(selected) { mutableStateOf(current) }
+    val isFuture = picked.isAfter(today)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF0A0906),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Enter your life data",
+                    color = Color(0xFFEDE8DE),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
+                    onClick = {
+                        val ms = localToMs(picked)
+                        when (selected) {
+                            WhoTab.ME  -> preferences.setUmrBirthday(ms)
+                            WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
+                            WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
+                        }
+                        onDismiss()
+                    },
+                    enabled = !isFuture,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFFC62E)),
+                ) { Text("Done") }
+            }
+            WhoTabs(selected = selected, onSelected = { selected = it })
+            Text(
+                text = "Date of Birth",
+                color = ModernGold,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            DateNumberInputs(
+                day = picked.dayOfMonth,
+                month = picked.monthValue,
+                year = picked.year,
+                onChange = { d, m, y ->
+                    picked = runCatching { LocalDate.of(y, m, d.coerceAtMost(28)) }
+                        .getOrElse { LocalDate.of(y, m, 1) }
+                },
+            )
+            if (isFuture) {
+                Text(
+                    text = "Date can't be in the future.",
+                    color = Color(0xFFE53935),
+                    fontSize = 12.sp,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

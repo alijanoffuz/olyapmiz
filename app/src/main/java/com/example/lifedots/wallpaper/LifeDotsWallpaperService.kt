@@ -894,12 +894,12 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // Configure class-level paints once per draw (avoids per-frame allocation).
             umrFilledPaint.color = colors.filledDot
-            umrFilledPaint.alpha = (settings.umrSettings.livedAlpha * 255f).toInt().coerceIn(0, 255)
+            umrFilledPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
             umrCrossPaint.color = colors.filledDot
-            umrCrossPaint.alpha = (settings.umrSettings.livedAlpha * 255f).toInt().coerceIn(0, 255)
+            umrCrossPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
             umrCrossPaint.strokeWidth = layout.dotSizePx * 0.18f
             umrEmptyPaint.color = colors.emptyDot
-            umrEmptyPaint.alpha = (settings.umrSettings.emptyAlpha * 255f).toInt().coerceIn(0, 255)
+            umrEmptyPaint.alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
             umrTodayPaint.color = colors.todayDot
             umrTodayPaint.alpha = 255
             umrGlowPaint.color = colors.todayDot
@@ -947,7 +947,8 @@ class LifeDotsWallpaperService : WallpaperService() {
                     umrCounterTextPaint.alpha = if (c.weeks == null) 100 else 230
                     umrCounterSwatchPaint.color = c.color
                     umrCounterSwatchPaint.alpha = if (c.weeks == null) 80 else 220
-                    canvas.drawCircle(cx - textSize * 1.6f, swatchY, swatchRadius, umrCounterSwatchPaint)
+                    val swatchX = cellWidth * idx + cellWidth * 0.12f
+                    canvas.drawCircle(swatchX, swatchY, swatchRadius, umrCounterSwatchPaint)
                     canvas.drawText(numberText, cx, numberY, umrCounterTextPaint)
                     umrCounterTextPaint.textSize = textSize * 0.55f
                     canvas.drawText(c.label, cx, labelY, umrCounterTextPaint)

@@ -120,7 +120,7 @@ data class CustomColors(
 // Custom Positioning & Scaling
 data class PositionSettings(
     val horizontalOffset: Float = 0f,  // -50 to 50 percent
-    val verticalOffset: Float = 18f,   // -50 to 50; slider literal — fresh installs open at 18%
+    val verticalOffset: Float = 0f,    // -50 to 50
     val scale: Float = 1.0f            // 0.5 to 1.5
 )
 
@@ -450,7 +450,7 @@ class LifeDotsPreferences(context: Context) {
         // Position Settings
         val positionSettings = PositionSettings(
             horizontalOffset = prefs.getFloat(KEY_HORIZONTAL_OFFSET, 0f),
-            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 18f),
+            verticalOffset = prefs.getFloat(KEY_VERTICAL_OFFSET, 0f),
             scale = prefs.getFloat(KEY_SCALE, 1.0f)
         )
 
@@ -1052,14 +1052,14 @@ class LifeDotsPreferences(context: Context) {
         }
         prefs.edit()
             .putString(KEY_UMR_VISUAL_MODE, mode.name)
-            .putFloat(KEY_UMR_LIVED_ALPHA, lived)
-            .putFloat(KEY_UMR_EMPTY_ALPHA, empty)
+            .putFloat(KEY_FILLED_DOT_ALPHA, lived)
+            .putFloat(KEY_EMPTY_DOT_ALPHA, empty)
             .apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
-            umrSettings = current.umrSettings.copy(
-                visualMode = mode, livedAlpha = lived, emptyAlpha = empty,
-            )
+            umrSettings = current.umrSettings.copy(visualMode = mode),
+            filledDotAlpha = lived,
+            emptyDotAlpha = empty,
         )
     }
 
