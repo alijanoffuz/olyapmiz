@@ -102,13 +102,31 @@ class LifeDotsWallpaperService : WallpaperService() {
             strokeCap = Paint.Cap.ROUND
         }
         private val umrYearBandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val umrMomRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
+        private val umrMomFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
             color = 0xFFE53935.toInt()   // mom = warm red
         }
-        private val umrDadRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
+        private val umrDadFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
             color = 0xFF2D75A8.toInt()   // dad = steel blue
+        }
+        private val umrMomGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = 0xFFE53935.toInt()
+        }
+        private val umrDadGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = 0xFF2D75A8.toInt()
+        }
+        private val umrMomCrossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            color = 0xFFE53935.toInt()
+        }
+        private val umrDadCrossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            color = 0xFF2D75A8.toInt()
         }
         private val umrCounterTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
@@ -1005,22 +1023,49 @@ class LifeDotsWallpaperService : WallpaperService() {
                 }
             }
 
-            // Parent rings — outline-only circles at each parent's current
-            // week-of-life cell. Drawn after the dots so they read on top.
-            val ringStroke = layout.dotSizePx * 0.18f
-            val ringRadius = layout.dotSizePx * 0.62f
-            umrMomRingPaint.strokeWidth = ringStroke
-            umrDadRingPaint.strokeWidth = ringStroke
+            // Parent markers — filled colour with a soft glow halo at each
+            // parent's current week-of-life cell, plus a heavier-weight X
+            // (red / blue) in X-mode so they're impossible to miss.
+            val parentR = layout.dotSizePx / 2f
+            val glowRadius = parentR * 2.3f
+            val crossStroke = layout.dotSizePx * 0.32f
+            val blur = BlurMaskFilter(layout.dotSizePx * 1.6f, BlurMaskFilter.Blur.NORMAL)
+            umrMomGlowPaint.maskFilter = blur
+            umrDadGlowPaint.maskFilter = blur
+            umrMomGlowPaint.alpha = 150
+            umrDadGlowPaint.alpha = 150
+            umrMomFillPaint.alpha = 255
+            umrDadFillPaint.alpha = 255
+            umrMomCrossPaint.alpha = 255
+            umrDadCrossPaint.alpha = 255
+            umrMomCrossPaint.strokeWidth = crossStroke
+            umrDadCrossPaint.strokeWidth = crossStroke
+
+            val isX = settings.umrSettings.visualMode == UmrVisualMode.X_MARKS
 
             val momCell = weekIndexFor(settings.umrSettings.momBirthdayEpochMs, now)
             if (momCell >= 0) {
                 val (cx, cy) = UmrLayoutCompute.cellCenter(layout, momCell)
-                canvas.drawCircle(cx, cy, ringRadius, umrMomRingPaint)
+                canvas.drawCircle(cx, cy, glowRadius, umrMomGlowPaint)
+                if (isX) {
+                    val s = parentR * 0.95f
+                    canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrMomCrossPaint)
+                    canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrMomCrossPaint)
+                } else {
+                    canvas.drawCircle(cx, cy, parentR, umrMomFillPaint)
+                }
             }
             val dadCell = weekIndexFor(settings.umrSettings.dadBirthdayEpochMs, now)
             if (dadCell >= 0) {
                 val (cx, cy) = UmrLayoutCompute.cellCenter(layout, dadCell)
-                canvas.drawCircle(cx, cy, ringRadius, umrDadRingPaint)
+                canvas.drawCircle(cx, cy, glowRadius, umrDadGlowPaint)
+                if (isX) {
+                    val s = parentR * 0.95f
+                    canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrDadCrossPaint)
+                    canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrDadCrossPaint)
+                } else {
+                    canvas.drawCircle(cx, cy, parentR, umrDadFillPaint)
+                }
             }
 
             canvas.restore()
