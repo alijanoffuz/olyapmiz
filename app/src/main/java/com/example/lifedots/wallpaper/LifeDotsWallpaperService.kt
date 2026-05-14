@@ -101,6 +101,7 @@ class LifeDotsWallpaperService : WallpaperService() {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
         }
+        private val umrYearBandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
         private val diamondPath = Path()
         private val rectF = RectF()
@@ -891,6 +892,34 @@ class LifeDotsWallpaperService : WallpaperService() {
             umrGlowPaint.maskFilter = BlurMaskFilter(layout.dotSizePx * 1.5f, BlurMaskFilter.Blur.NORMAL)
 
             val r = layout.dotSizePx / 2f
+
+            // Year-row gradient — soft "you are here" stripe under your
+            // current year row. Drawn first so dots paint on top.
+            if (weeksLived in 0..(UmrLayoutCompute.ROWS * UmrLayoutCompute.COLS - 1)) {
+                val yourRow = weeksLived / UmrLayoutCompute.COLS
+                val rowTop = layout.gridTopPx + yourRow * (layout.dotSizePx + layout.dotGapPx)
+                val rowBottom = rowTop + layout.dotSizePx
+                val pad = layout.dotSizePx * 0.35f
+                val goldArgb = colors.filledDot
+                val goldR = (goldArgb shr 16) and 0xFF
+                val goldG = (goldArgb shr 8) and 0xFF
+                val goldB = goldArgb and 0xFF
+                val midColor = android.graphics.Color.argb(20, goldR, goldG, goldB)  // ~8% alpha
+                umrYearBandPaint.shader = android.graphics.LinearGradient(
+                    layout.gridLeftPx, 0f, layout.gridLeftPx + layout.gridWidthPx, 0f,
+                    intArrayOf(0x00000000, midColor, 0x00000000),
+                    floatArrayOf(0f, 0.5f, 1f),
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+                canvas.drawRect(
+                    layout.gridLeftPx,
+                    rowTop - pad,
+                    layout.gridLeftPx + layout.gridWidthPx,
+                    rowBottom + pad,
+                    umrYearBandPaint,
+                )
+                umrYearBandPaint.shader = null   // release reference
+            }
 
             for (i in 0 until totalCells) {
                 val (cx, cy) = UmrLayoutCompute.cellCenter(layout, i)
