@@ -107,6 +107,8 @@ import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.preferences.TextAlignment
 import com.example.lifedots.preferences.ThemeOption
 import com.example.lifedots.preferences.TopViewMode
+import com.example.lifedots.ui.screens.YilSettingsScreen
+import com.example.lifedots.ui.screens.UmrSettingsScreen
 import com.example.lifedots.preferences.TreeStyle
 import com.example.lifedots.preferences.ViewMode
 import com.example.lifedots.preferences.VisualTheme
@@ -223,21 +225,22 @@ fun SettingsScreen(
         }
     }
 
-    ModernSettingsContent(
-        settings = settings,
-        preferences = preferences,
-        snackbarHostState = snackbarHostState,
-        scope = scope,
-        onAddGoal = {
-            editingGoal = null
-            showGoalEditor = true
-        },
-        onEditGoal = { goal ->
-            editingGoal = goal
-            showGoalEditor = true
-        },
-        modifier = modifier,
-    )
+    when (settings.topViewMode) {
+        TopViewMode.YIL -> YilSettingsScreen(
+            settings = settings,
+            preferences = preferences,
+            snackbarHostState = snackbarHostState,
+            scope = scope,
+            onAddGoal = { editingGoal = null; showGoalEditor = true },
+            onEditGoal = { goal -> editingGoal = goal; showGoalEditor = true },
+            modifier = modifier,
+        )
+        TopViewMode.UMR -> UmrSettingsScreen(
+            settings = settings,
+            preferences = preferences,
+            modifier = modifier,
+        )
+    }
 
     if (showGoalEditor) {
         GoalEditorDialog(
@@ -1571,133 +1574,6 @@ private fun modernSliderColors() = SliderDefaults.colors(
     inactiveTickColor = ModernGold.copy(alpha = 0.75f),
 )
 
-@Composable
-private fun ModeTopSection(
-    settings: WallpaperSettings,
-    preferences: LifeDotsPreferences,
-    snackbarHostState: SnackbarHostState,
-    scope: CoroutineScope,
-) {
-    val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        ModeTogglePill(
-            leftLabel = "Yil",
-            rightLabel = "Umr",
-            isLeftSelected = settings.topViewMode == TopViewMode.YIL,
-            onSelect = { isLeft ->
-                preferences.setTopViewMode(if (isLeft) TopViewMode.YIL else TopViewMode.UMR)
-            },
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Auto-switch",
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-            )
-            BrandSwitch(
-                checked = settings.autoSwitchSettings.enabled,
-                onCheckedChange = { wantOn ->
-                    if (wantOn && settings.umrSettings.birthdayEpochMs == 0L) {
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                message = "Set your birthday first",
-                                actionLabel = "OK",
-                                duration = SnackbarDuration.Short,
-                            )
-                        }
-                    } else {
-                        preferences.setAutoSwitchEnabled(wantOn)
-                    }
-                },
-            )
-        }
-
-        if (settings.autoSwitchSettings.enabled) {
-            Text(
-                text = "Switch every",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            IntervalSlider(
-                currentMs = settings.autoSwitchSettings.intervalMs,
-                onIntervalChange = { ms -> preferences.setAutoSwitchIntervalMs(ms) },
-                feedback = feedback,
-            )
-            Text(
-                text = "Auto-switch is on — wallpaper rotates automatically.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-    HorizontalDivider()
-}
-
-@Composable
-private fun UmrSettingsSection(
-    settings: WallpaperSettings,
-    preferences: LifeDotsPreferences,
-) {
-    val birthdayMs = settings.umrSettings.birthdayEpochMs
-    val isSet = birthdayMs > 0L
-    val fmt = remember { java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale.getDefault()) }
-    var editing by remember { mutableStateOf(!isSet) }
-    val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
-
-    SettingsSection(title = "Umr") {
-        if (editing) {
-            BirthdayEditor(
-                initialEpochMs = birthdayMs,
-                feedback = feedback,
-                onSave = { ms ->
-                    preferences.setUmrBirthday(ms)
-                    editing = false
-                },
-            )
-        } else {
-            PressableCard(
-                onClick = { editing = true },
-                feedback = feedback,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = if (isSet) BrandColors.InkBlackElevated else Color(0xFFE53935),
-                contentColor = if (isSet) BrandColors.OffWhite else Color.White,
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (isSet) "Birthday" else "Set your birthday",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (isSet) BrandColors.GoldenMuted else Color.White,
-                        )
-                        Text(
-                            text = if (isSet) fmt.format(java.util.Date(birthdayMs))
-                                   else "Required to render your life-in-weeks grid",
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = if (isSet) BrandColors.OffWhite else Color.White,
-                        )
-                    }
-                    Text(
-                        text = "✎",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = if (isSet) BrandColors.AmberGold else Color.White,
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun SettingsSection(
