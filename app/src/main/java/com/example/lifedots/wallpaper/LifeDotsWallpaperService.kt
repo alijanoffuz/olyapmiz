@@ -51,6 +51,7 @@ import com.example.lifedots.preferences.ThemeOption
 import com.example.lifedots.preferences.TreeEffectSettings
 import com.example.lifedots.preferences.TreeStyle
 import com.example.lifedots.preferences.TopViewMode
+import com.example.lifedots.preferences.UmrVisualMode
 import com.example.lifedots.preferences.ViewMode
 import com.example.lifedots.preferences.WallpaperSettings
 import com.example.lifedots.preferences.currentEffectiveMode
@@ -96,6 +97,10 @@ class LifeDotsWallpaperService : WallpaperService() {
         private val umrEmptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         private val umrTodayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         private val umrGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val umrCrossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
 
         private val diamondPath = Path()
         private val rectF = RectF()
@@ -874,6 +879,9 @@ class LifeDotsWallpaperService : WallpaperService() {
             // Configure class-level paints once per draw (avoids per-frame allocation).
             umrFilledPaint.color = colors.filledDot
             umrFilledPaint.alpha = (settings.umrSettings.livedAlpha * 255f).toInt().coerceIn(0, 255)
+            umrCrossPaint.color = colors.filledDot
+            umrCrossPaint.alpha = (settings.umrSettings.livedAlpha * 255f).toInt().coerceIn(0, 255)
+            umrCrossPaint.strokeWidth = layout.dotSizePx * 0.18f
             umrEmptyPaint.color = colors.emptyDot
             umrEmptyPaint.alpha = (settings.umrSettings.emptyAlpha * 255f).toInt().coerceIn(0, 255)
             umrTodayPaint.color = colors.todayDot
@@ -891,7 +899,15 @@ class LifeDotsWallpaperService : WallpaperService() {
                     // Birthday unset — render everything as future (empty).
                     weeksLived < 0 -> canvas.drawCircle(cx, cy, r, umrEmptyPaint)
                     // Past
-                    i < weeksLived -> canvas.drawCircle(cx, cy, r, umrFilledPaint)
+                    i < weeksLived -> {
+                        if (settings.umrSettings.visualMode == UmrVisualMode.X_MARKS) {
+                            val s = r * 0.85f
+                            canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrCrossPaint)
+                            canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrCrossPaint)
+                        } else {
+                            canvas.drawCircle(cx, cy, r, umrFilledPaint)
+                        }
+                    }
                     // Current week — single tinted dot with a soft glow.
                     i == weeksLived -> {
                         canvas.drawCircle(cx, cy, r * 1.4f, umrGlowPaint)
