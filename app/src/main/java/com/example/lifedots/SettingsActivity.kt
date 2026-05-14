@@ -71,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -441,19 +442,21 @@ internal fun ModernSettingsContent(
             }
         }
 
-        item {
-            ModernPanelCard {
-                ModernSettingRow(
-                    icon = SettingIcon.Sun,
-                    title = "Highlight Today",
-                    subtitle = "Show a distinct marker for today's dot",
-                    trailing = {
-                        ModernSwitch(
-                            checked = settings.highlightToday,
-                            onCheckedChange = { preferences.setHighlightToday(it) },
-                        )
-                    },
-                )
+        if (settings.topViewMode == TopViewMode.YIL) {
+            item {
+                ModernPanelCard {
+                    ModernSettingRow(
+                        icon = SettingIcon.Sun,
+                        title = "Highlight Today",
+                        subtitle = "Show a distinct marker for today's dot",
+                        trailing = {
+                            ModernSwitch(
+                                checked = settings.highlightToday,
+                                onCheckedChange = { preferences.setHighlightToday(it) },
+                            )
+                        },
+                    )
+                }
             }
         }
 
@@ -2644,24 +2647,26 @@ private fun LifeDataEditorSheet(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            DateNumberInputs(
-                day = initialDate?.dayOfMonth,
-                month = initialDate?.monthValue,
-                year = initialDate?.year,
-                onChange = { d, m, y ->
-                    if (d != null && m != null && y != null && y in 1900..today.year) {
-                        val date = runCatching { LocalDate.of(y, m, d) }.getOrNull()
-                        if (date != null && !date.isAfter(today)) {
-                            val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                            when (selected) {
-                                WhoTab.ME  -> preferences.setUmrBirthday(ms)
-                                WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
-                                WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
+            key(selected) {
+                DateNumberInputs(
+                    day = initialDate?.dayOfMonth,
+                    month = initialDate?.monthValue,
+                    year = initialDate?.year,
+                    onChange = { d, m, y ->
+                        if (d != null && m != null && y != null && y in 1900..today.year) {
+                            val date = runCatching { LocalDate.of(y, m, d) }.getOrNull()
+                            if (date != null && !date.isAfter(today)) {
+                                val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                                when (selected) {
+                                    WhoTab.ME  -> preferences.setUmrBirthday(ms)
+                                    WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
+                                    WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
+                                }
                             }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
         }
     }

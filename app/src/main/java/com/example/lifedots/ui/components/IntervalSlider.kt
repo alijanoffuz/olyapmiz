@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.lifedots.ui.theme.BrandColors
@@ -77,7 +78,7 @@ fun IntervalSlider(
             colors = SliderDefaults.colors(
                 thumbColor = BrandColors.AmberGold,
                 activeTrackColor = BrandColors.AmberGold,
-                inactiveTrackColor = BrandColors.InkBlackElevated,
+                inactiveTrackColor = Color.White.copy(alpha = 0.20f),
                 activeTickColor = BrandColors.InkBlack,
                 inactiveTickColor = BrandColors.GoldenMuted,
             ),
