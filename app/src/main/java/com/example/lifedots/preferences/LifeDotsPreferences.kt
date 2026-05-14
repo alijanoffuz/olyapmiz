@@ -365,6 +365,19 @@ class LifeDotsPreferences(context: Context) {
             // v10: introduces soundsEnabled + vibrationsEnabled. Both default
             // true via the data-class defaults — no destructive writes needed.
         }
+        if (stored < 11) {
+            // v11: introduce parent birthdays + Umr visual mode + Umr-only alphas.
+            // Pure additive — only writes defaults for missing keys, never touches
+            // existing user data. Safe to re-run if interrupted.
+            val edit = prefs.edit()
+            if (!prefs.contains(KEY_UMR_MOM_BIRTHDAY_MS)) edit.putLong(KEY_UMR_MOM_BIRTHDAY_MS, 0L)
+            if (!prefs.contains(KEY_UMR_DAD_BIRTHDAY_MS)) edit.putLong(KEY_UMR_DAD_BIRTHDAY_MS, 0L)
+            if (!prefs.contains(KEY_UMR_VISUAL_MODE)) edit.putString(KEY_UMR_VISUAL_MODE, UmrVisualMode.DOTS.name)
+            if (!prefs.contains(KEY_UMR_LIVED_ALPHA)) edit.putFloat(KEY_UMR_LIVED_ALPHA, 1.0f)
+            if (!prefs.contains(KEY_UMR_EMPTY_ALPHA)) edit.putFloat(KEY_UMR_EMPTY_ALPHA, 0.6f)
+            if (!prefs.contains(KEY_UMR_TOTAL_WEEKS)) edit.putInt(KEY_UMR_TOTAL_WEEKS, 4000)
+            edit.putInt(KEY_MIGRATION_VERSION, 11).apply()
+        }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
 
@@ -511,6 +524,14 @@ class LifeDotsPreferences(context: Context) {
             ),
             umrSettings = UmrSettings(
                 birthdayEpochMs = prefs.getLong(KEY_UMR_BIRTHDAY_MS, 0L),
+                momBirthdayEpochMs = prefs.getLong(KEY_UMR_MOM_BIRTHDAY_MS, 0L),
+                dadBirthdayEpochMs = prefs.getLong(KEY_UMR_DAD_BIRTHDAY_MS, 0L),
+                visualMode = prefs.getString(KEY_UMR_VISUAL_MODE, UmrVisualMode.DOTS.name)
+                    ?.let { runCatching { UmrVisualMode.valueOf(it) }.getOrNull() }
+                    ?: UmrVisualMode.DOTS,
+                livedAlpha = prefs.getFloat(KEY_UMR_LIVED_ALPHA, 1.0f),
+                emptyAlpha = prefs.getFloat(KEY_UMR_EMPTY_ALPHA, 0.6f),
+                totalWeeks = prefs.getInt(KEY_UMR_TOTAL_WEEKS, 4000),
             ),
             soundsEnabled = prefs.getBoolean(KEY_SOUNDS_ENABLED, true),
             vibrationsEnabled = prefs.getBoolean(KEY_VIBRATIONS_ENABLED, true),
@@ -986,6 +1007,62 @@ class LifeDotsPreferences(context: Context) {
         notifyWallpaperChanged()
     }
 
+    fun setUmrMomBirthday(epochMs: Long) {
+        prefs.edit().putLong(KEY_UMR_MOM_BIRTHDAY_MS, epochMs).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(momBirthdayEpochMs = epochMs)
+        )
+    }
+
+    fun setUmrDadBirthday(epochMs: Long) {
+        prefs.edit().putLong(KEY_UMR_DAD_BIRTHDAY_MS, epochMs).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(dadBirthdayEpochMs = epochMs)
+        )
+    }
+
+    fun setUmrLivedAlpha(alpha: Float) {
+        val v = alpha.coerceIn(0f, 1f)
+        prefs.edit().putFloat(KEY_UMR_LIVED_ALPHA, v).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(livedAlpha = v)
+        )
+    }
+
+    fun setUmrEmptyAlpha(alpha: Float) {
+        val v = alpha.coerceIn(0f, 1f)
+        prefs.edit().putFloat(KEY_UMR_EMPTY_ALPHA, v).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(emptyAlpha = v)
+        )
+    }
+
+    /**
+     * Atomic mode toggle: writes visualMode AND the mode's default alpha pair
+     * in a single edit, so the UI can't observe a half-updated state.
+     */
+    fun setUmrVisualMode(mode: UmrVisualMode) {
+        val (lived, empty) = when (mode) {
+            UmrVisualMode.DOTS -> 1.0f to 0.6f
+            UmrVisualMode.X_MARKS -> 0.30f to 1.0f
+        }
+        prefs.edit()
+            .putString(KEY_UMR_VISUAL_MODE, mode.name)
+            .putFloat(KEY_UMR_LIVED_ALPHA, lived)
+            .putFloat(KEY_UMR_EMPTY_ALPHA, empty)
+            .apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(
+                visualMode = mode, livedAlpha = lived, emptyAlpha = empty,
+            )
+        )
+    }
+
     fun setSoundsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_SOUNDS_ENABLED, enabled).apply()
         val current = _settingsFlow.value
@@ -1010,7 +1087,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 10
+        private const val CURRENT_MIGRATION_VERSION = 11
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
@@ -1109,6 +1186,12 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_AUTO_SWITCH_REFERENCE_MS = "auto_switch_reference_ms"
         private const val KEY_AUTO_SWITCH_START_MODE = "auto_switch_start_mode"
         private const val KEY_UMR_BIRTHDAY_MS = "umr_birthday_ms"
+        private const val KEY_UMR_MOM_BIRTHDAY_MS = "umr_mom_birthday_ms"
+        private const val KEY_UMR_DAD_BIRTHDAY_MS = "umr_dad_birthday_ms"
+        private const val KEY_UMR_VISUAL_MODE = "umr_visual_mode"
+        private const val KEY_UMR_LIVED_ALPHA = "umr_lived_alpha"
+        private const val KEY_UMR_EMPTY_ALPHA = "umr_empty_alpha"
+        private const val KEY_UMR_TOTAL_WEEKS = "umr_total_weeks"
 
         private val wallpaperChangeListeners = mutableListOf<() -> Unit>()
 
