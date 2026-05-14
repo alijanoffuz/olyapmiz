@@ -26,23 +26,27 @@ import androidx.compose.ui.unit.sp
  * Three side-by-side numeric inputs for DD / MM / YYYY. Matches the Yil
  * settings card aesthetic (dark surface, hairline gold border, AmberGold
  * accents).
+ *
+ * Accepts nullable Int? so callers can start with empty fields for unset
+ * dates. onChange fires with nullable Int? values — callers should treat
+ * a null component as "not yet entered".
  */
 @Composable
 fun DateNumberInputs(
-    day: Int,
-    month: Int,
-    year: Int,
-    onChange: (day: Int, month: Int, year: Int) -> Unit,
+    day: Int?,
+    month: Int?,
+    year: Int?,
+    onChange: (day: Int?, month: Int?, year: Int?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var dayText by remember(day) { mutableStateOf(day.toString().padStart(2, '0')) }
-    var monthText by remember(month) { mutableStateOf(month.toString().padStart(2, '0')) }
-    var yearText by remember(year) { mutableStateOf(year.toString()) }
+    var dayText by remember(day) { mutableStateOf(day?.toString()?.padStart(2, '0') ?: "") }
+    var monthText by remember(month) { mutableStateOf(month?.toString()?.padStart(2, '0') ?: "") }
+    var yearText by remember(year) { mutableStateOf(year?.toString() ?: "") }
 
     fun emit() {
-        val d = dayText.toIntOrNull()?.coerceIn(1, 31) ?: day
-        val m = monthText.toIntOrNull()?.coerceIn(1, 12) ?: month
-        val y = yearText.toIntOrNull()?.coerceIn(1900, 2100) ?: year
+        val d = dayText.toIntOrNull()
+        val m = monthText.toIntOrNull()
+        val y = yearText.toIntOrNull()
         onChange(d, m, y)
     }
 

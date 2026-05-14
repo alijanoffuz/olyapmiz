@@ -898,7 +898,9 @@ class LifeDotsWallpaperService : WallpaperService() {
             umrCrossPaint.color = colors.filledDot
             umrCrossPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
             umrCrossPaint.strokeWidth = layout.dotSizePx * 0.18f
-            umrEmptyPaint.color = colors.emptyDot
+            umrEmptyPaint.color =
+                if (settings.umrSettings.visualMode == UmrVisualMode.X_MARKS) 0xFFFFFFFF.toInt()
+                else colors.emptyDot
             umrEmptyPaint.alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
             umrTodayPaint.color = colors.todayDot
             umrTodayPaint.alpha = 255
@@ -962,12 +964,12 @@ class LifeDotsWallpaperService : WallpaperService() {
                 val yourRow = weeksLived / UmrLayoutCompute.COLS
                 val rowTop = layout.gridTopPx + yourRow * (layout.dotSizePx + layout.dotGapPx)
                 val rowBottom = rowTop + layout.dotSizePx
-                val pad = layout.dotSizePx * 0.35f
+                val pad = layout.dotSizePx * 0.75f
                 val goldArgb = colors.filledDot
                 val goldR = (goldArgb shr 16) and 0xFF
                 val goldG = (goldArgb shr 8) and 0xFF
                 val goldB = goldArgb and 0xFF
-                val midColor = android.graphics.Color.argb(20, goldR, goldG, goldB)  // ~8% alpha
+                val midColor = android.graphics.Color.argb(64, goldR, goldG, goldB)  // ~25% alpha for stronger glow
                 umrYearBandPaint.shader = android.graphics.LinearGradient(
                     layout.gridLeftPx, 0f, layout.gridLeftPx + layout.gridWidthPx, 0f,
                     intArrayOf(0x00000000, midColor, 0x00000000),
@@ -1000,10 +1002,15 @@ class LifeDotsWallpaperService : WallpaperService() {
                             canvas.drawCircle(cx, cy, r, umrFilledPaint)
                         }
                     }
-                    // Current week — single tinted dot with a soft glow.
+                    // Current week — render same as past (no special glow marker).
                     i == weeksLived -> {
-                        canvas.drawCircle(cx, cy, r * 1.4f, umrGlowPaint)
-                        canvas.drawCircle(cx, cy, r, umrTodayPaint)
+                        if (settings.umrSettings.visualMode == UmrVisualMode.X_MARKS) {
+                            val s = r * 0.85f
+                            canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrCrossPaint)
+                            canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrCrossPaint)
+                        } else {
+                            canvas.drawCircle(cx, cy, r, umrFilledPaint)
+                        }
                     }
                     // Future
                     else -> canvas.drawCircle(cx, cy, r, umrEmptyPaint)

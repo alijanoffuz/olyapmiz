@@ -375,45 +375,47 @@ internal fun ModernSettingsContent(
             }
         }
 
-        item {
-            ModernSectionTitle("THEME")
-            ModernPanelCard(contentPadding = 10.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ModernThemeOption(
-                        label = "Light",
-                        selected = settings.theme == ThemeOption.LIGHT,
-                        background = Color(0xFFF8EFD7),
-                        dotColors = listOf(Color(0xFF69645D), Color(0xFF858078)),
-                        onClick = { preferences.setTheme(ThemeOption.LIGHT) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ModernThemeOption(
-                        label = "Dark",
-                        selected = settings.theme == ThemeOption.DARK,
-                        background = Color(0xFF25231F),
-                        dotColors = listOf(Color(0xFFB6B0A6), Color(0xFFE7E0D2)),
-                        onClick = { preferences.setTheme(ThemeOption.DARK) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ModernThemeOption(
-                        label = "AMOLED",
-                        selected = settings.theme == ThemeOption.AMOLED,
-                        background = Color.Black,
-                        dotColors = listOf(Color(0xFFE5E0D4), ModernGold),
-                        onClick = { preferences.setTheme(ThemeOption.AMOLED) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ModernThemeOption(
-                        label = "Custom",
-                        selected = settings.theme == ThemeOption.CUSTOM,
-                        background = Color(0xFF252015),
-                        dotColors = listOf(Color(0xFFD9C88B), ModernGold),
-                        onClick = { preferences.setTheme(ThemeOption.CUSTOM) },
-                        modifier = Modifier.weight(1f),
-                    )
+        if (settings.topViewMode == TopViewMode.YIL) {
+            item {
+                ModernSectionTitle("THEME")
+                ModernPanelCard(contentPadding = 10.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        ModernThemeOption(
+                            label = "Light",
+                            selected = settings.theme == ThemeOption.LIGHT,
+                            background = Color(0xFFF8EFD7),
+                            dotColors = listOf(Color(0xFF69645D), Color(0xFF858078)),
+                            onClick = { preferences.setTheme(ThemeOption.LIGHT) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ModernThemeOption(
+                            label = "Dark",
+                            selected = settings.theme == ThemeOption.DARK,
+                            background = Color(0xFF25231F),
+                            dotColors = listOf(Color(0xFFB6B0A6), Color(0xFFE7E0D2)),
+                            onClick = { preferences.setTheme(ThemeOption.DARK) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ModernThemeOption(
+                            label = "AMOLED",
+                            selected = settings.theme == ThemeOption.AMOLED,
+                            background = Color.Black,
+                            dotColors = listOf(Color(0xFFE5E0D4), ModernGold),
+                            onClick = { preferences.setTheme(ThemeOption.AMOLED) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ModernThemeOption(
+                            label = "Custom",
+                            selected = settings.theme == ThemeOption.CUSTOM,
+                            background = Color(0xFF252015),
+                            dotColors = listOf(Color(0xFFD9C88B), ModernGold),
+                            onClick = { preferences.setTheme(ThemeOption.CUSTOM) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
@@ -455,49 +457,51 @@ internal fun ModernSettingsContent(
             }
         }
 
-        item {
-            ModernSectionTitle("VIEW MODE")
-            ModernPanelCard {
-                ModernSelectPill(
-                    icon = SettingIcon.Grid,
-                    label = "Year",
-                    selected = true,
-                    onClick = {
-                        preferences.setViewMode(ViewMode.CALENDAR)
-                        preferences.setShowMonthLabels(true)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                ModernDivider(top = 16.dp, bottom = 14.dp)
-
-                Text(
-                    text = "Calendar Columns",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    ModernColumnOption(
-                        label = "2 × 6",
-                        columns = 2,
-                        selected = settings.calendarViewSettings.columnsPerRow == 2,
-                        onClick = { preferences.setCalendarColumns(2) },
-                        modifier = Modifier.weight(1f),
+        if (settings.topViewMode == TopViewMode.YIL) {
+            item {
+                ModernSectionTitle("VIEW MODE")
+                ModernPanelCard {
+                    ModernSelectPill(
+                        icon = SettingIcon.Grid,
+                        label = "Year",
+                        selected = true,
+                        onClick = {
+                            preferences.setViewMode(ViewMode.CALENDAR)
+                            preferences.setShowMonthLabels(true)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    ModernColumnOption(
-                        label = "3 × 4",
-                        columns = 3,
-                        selected = settings.calendarViewSettings.columnsPerRow == 3,
-                        onClick = { preferences.setCalendarColumns(3) },
-                        modifier = Modifier.weight(1f),
+
+                    ModernDivider(top = 16.dp, bottom = 14.dp)
+
+                    Text(
+                        text = "Calendar Columns",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        ModernColumnOption(
+                            label = "2 × 6",
+                            columns = 2,
+                            selected = settings.calendarViewSettings.columnsPerRow == 2,
+                            onClick = { preferences.setCalendarColumns(2) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ModernColumnOption(
+                            label = "3 × 4",
+                            columns = 3,
+                            selected = settings.calendarViewSettings.columnsPerRow == 3,
+                            onClick = { preferences.setCalendarColumns(3) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+
                 }
-
             }
         }
 
@@ -2600,20 +2604,14 @@ private fun LifeDataEditorSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val today = LocalDate.now()
 
-    fun msToLocal(ms: Long): LocalDate =
-        if (ms <= 0L) today
-        else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
-
-    fun localToMs(d: LocalDate): Long =
-        d.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-    val current = when (selected) {
-        WhoTab.ME  -> msToLocal(settings.umrSettings.birthdayEpochMs)
-        WhoTab.DAD -> msToLocal(settings.umrSettings.dadBirthdayEpochMs)
-        WhoTab.MOM -> msToLocal(settings.umrSettings.momBirthdayEpochMs)
+    val initialMs = when (selected) {
+        WhoTab.ME  -> settings.umrSettings.birthdayEpochMs
+        WhoTab.DAD -> settings.umrSettings.dadBirthdayEpochMs
+        WhoTab.MOM -> settings.umrSettings.momBirthdayEpochMs
     }
-    var picked by remember(selected) { mutableStateOf(current) }
-    val isFuture = picked.isAfter(today)
+    val initialDate: LocalDate? =
+        if (initialMs <= 0L) null
+        else Instant.ofEpochMilli(initialMs).atZone(ZoneId.systemDefault()).toLocalDate()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2635,16 +2633,7 @@ private fun LifeDataEditorSheet(
                     modifier = Modifier.weight(1f),
                 )
                 Button(
-                    onClick = {
-                        val ms = localToMs(picked)
-                        when (selected) {
-                            WhoTab.ME  -> preferences.setUmrBirthday(ms)
-                            WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
-                            WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
-                        }
-                        onDismiss()
-                    },
-                    enabled = !isFuture,
+                    onClick = onDismiss,
                     colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFFC62E)),
                 ) { Text("Done") }
             }
@@ -2656,21 +2645,23 @@ private fun LifeDataEditorSheet(
                 fontWeight = FontWeight.SemiBold,
             )
             DateNumberInputs(
-                day = picked.dayOfMonth,
-                month = picked.monthValue,
-                year = picked.year,
+                day = initialDate?.dayOfMonth,
+                month = initialDate?.monthValue,
+                year = initialDate?.year,
                 onChange = { d, m, y ->
-                    picked = runCatching { LocalDate.of(y, m, d.coerceAtMost(28)) }
-                        .getOrElse { LocalDate.of(y, m, 1) }
+                    if (d != null && m != null && y != null && y in 1900..today.year) {
+                        val date = runCatching { LocalDate.of(y, m, d) }.getOrNull()
+                        if (date != null && !date.isAfter(today)) {
+                            val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            when (selected) {
+                                WhoTab.ME  -> preferences.setUmrBirthday(ms)
+                                WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
+                                WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
+                            }
+                        }
+                    }
                 },
             )
-            if (isFuture) {
-                Text(
-                    text = "Date can't be in the future.",
-                    color = Color(0xFFE53935),
-                    fontSize = 12.sp,
-                )
-            }
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
