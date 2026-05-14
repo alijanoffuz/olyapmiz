@@ -282,7 +282,7 @@ private enum class SettingIcon {
 }
 
 @Composable
-private fun ModernSettingsContent(
+internal fun ModernSettingsContent(
     settings: WallpaperSettings,
     preferences: LifeDotsPreferences,
     snackbarHostState: SnackbarHostState,
