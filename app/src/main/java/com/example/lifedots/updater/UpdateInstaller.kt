@@ -20,9 +20,8 @@ import java.security.MessageDigest
 /**
  * Downloads a release APK and hands it to the system installer.
  *
- * Download lands in app's external-files dir under updates/, which the
- * FileProvider declared in the manifest exposes as content://. We never
- * touch shared storage — no MANAGE_EXTERNAL_STORAGE / scoped storage drama.
+ * Download lands in the app's internal cache under updates/, which the
+ * FileProvider declared in the manifest exposes as content://.
  */
 class UpdateInstaller(private val context: Context) {
 
@@ -32,23 +31,37 @@ class UpdateInstaller(private val context: Context) {
         info: UpdateInfo,
         onProgress: (downloaded: Long, total: Long) -> Unit
     ): File? = withContext(Dispatchers.IO) {
+        var conn: HttpURLConnection? = null
+        var partial: File? = null
+        var target: File? = null
         try {
-            val targetDir = File(context.getExternalFilesDir(null), "updates").apply { mkdirs() }
+            val targetDir = File(context.cacheDir, "updates")
+            if (!targetDir.exists() && !targetDir.mkdirs()) {
+                error("Could not create update cache directory")
+            }
             // Clean older files so we don't accumulate APKs on disk
             targetDir.listFiles()?.forEach { if (it.isFile) it.delete() }
-            val target = File(targetDir, "olyapmiz-${info.versionName}.apk")
+            val targetFile = File(targetDir, "olyapmiz-${info.versionName}.apk")
+            val partialFile = File(targetDir, "${targetFile.name}.partial")
+            target = targetFile
+            partial = partialFile
 
-            val conn = (URL(info.downloadUrl).openConnection() as HttpURLConnection).apply {
+            conn = (URL(info.downloadUrl).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = true
                 connectTimeout = 10_000
                 readTimeout = 30_000
                 setRequestProperty("User-Agent", "olyapmiz-android")
             }
+            val responseCode = conn.responseCode
+            if (responseCode !in 200..299) {
+                throw IllegalStateException("APK download failed with HTTP $responseCode")
+            }
+
             val total = if (info.downloadSize > 0) info.downloadSize else conn.contentLengthLong
+            var downloaded = 0L
             conn.inputStream.use { input ->
-                target.outputStream().use { output ->
+                partialFile.outputStream().use { output ->
                     val buf = ByteArray(64 * 1024)
-                    var downloaded = 0L
                     while (true) {
                         val n = input.read(buf)
                         if (n <= 0) break
@@ -58,12 +71,27 @@ class UpdateInstaller(private val context: Context) {
                     }
                 }
             }
-            conn.disconnect()
-            Log.i(tag, "Downloaded ${target.length()} bytes to $target")
-            target
+
+            if (downloaded <= 0L) {
+                throw IllegalStateException("Downloaded APK is empty")
+            }
+            if (total > 0L && downloaded != total) {
+                throw IllegalStateException("Incomplete APK download: $downloaded of $total bytes")
+            }
+            if (!partialFile.renameTo(targetFile)) {
+                partialFile.copyTo(targetFile, overwrite = true)
+                partialFile.delete()
+            }
+
+            Log.i(tag, "Downloaded ${targetFile.length()} bytes to $targetFile")
+            targetFile
         } catch (e: Exception) {
             Log.w(tag, "Download failed", e)
+            partial?.delete()
+            target?.delete()
             null
+        } finally {
+            conn?.disconnect()
         }
     }
 
@@ -97,7 +125,9 @@ class UpdateInstaller(private val context: Context) {
      *  - NeedsUnknownSources — "Install unknown apps" not granted; user redirected
      *  - SignatureMismatch — refuses to launch the installer because Android
      *    would reject the install anyway; caller should show the uninstall flow
+     *  - Failed — package installer could not be opened
      */
+    @Suppress("DEPRECATION")
     fun launchInstaller(activity: Activity, apk: File): LaunchResult {
         if (!activity.packageManager.canRequestPackageInstalls()) {
             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
@@ -121,12 +151,17 @@ class UpdateInstaller(private val context: Context) {
             "${activity.packageName}.fileprovider",
             apk
         )
-        val intent = Intent(Intent.ACTION_VIEW).apply {
+        val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        activity.startActivity(intent)
-        return LaunchResult.Started
+        return try {
+            activity.startActivity(intent)
+            LaunchResult.Started
+        } catch (e: Exception) {
+            Log.w(tag, "Could not launch package installer", e)
+            LaunchResult.Failed
+        }
     }
 
     /** Launches the system uninstaller for our own package, for the signature-mismatch flow. */
@@ -144,7 +179,7 @@ class UpdateInstaller(private val context: Context) {
     /** Wipes any cached APKs left behind from previous downloads. */
     fun cleanCache() {
         try {
-            val cacheDir = File(context.getExternalFilesDir(null), "updates")
+            val cacheDir = File(context.cacheDir, "updates")
             cacheDir.listFiles()?.forEach { it.delete() }
         } catch (e: Exception) {
             Log.w(tag, "Failed to clean update cache", e)
@@ -192,5 +227,5 @@ class UpdateInstaller(private val context: Context) {
     }
 
     enum class SignatureCheck { Match, Mismatch, Unknown }
-    enum class LaunchResult { Started, NeedsUnknownSources, SignatureMismatch }
+    enum class LaunchResult { Started, NeedsUnknownSources, SignatureMismatch, Failed }
 }

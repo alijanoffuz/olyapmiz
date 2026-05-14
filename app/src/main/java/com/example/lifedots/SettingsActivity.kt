@@ -1,15 +1,9 @@
 package com.example.lifedots
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.AnimatedVisibility
@@ -88,7 +82,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -96,7 +89,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import com.example.lifedots.preferences.AnimationType
 import com.example.lifedots.preferences.DotShape
 import com.example.lifedots.preferences.DotSize
@@ -117,8 +109,6 @@ import com.example.lifedots.preferences.TreeStyle
 import com.example.lifedots.preferences.ViewMode
 import com.example.lifedots.preferences.VisualTheme
 import com.example.lifedots.preferences.WallpaperSettings
-import com.example.lifedots.ui.components.ColorButton
-import com.example.lifedots.ui.components.ColorPickerDialog
 import com.example.lifedots.ui.components.DateNumberInputs
 import com.example.lifedots.ui.components.GoalEditorDialog
 import com.example.lifedots.ui.components.ModeTogglePill
@@ -178,64 +168,12 @@ fun SettingsScreen(
     snackbarHostState: SnackbarHostState,
 ) {
     val settings by preferences.settingsFlow.collectAsState()
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var showBgColorPicker by remember { mutableStateOf(false) }
-    var showFilledColorPicker by remember { mutableStateOf(false) }
-    var showEmptyColorPicker by remember { mutableStateOf(false) }
-    var showTodayColorPicker by remember { mutableStateOf(false) }
-    var showFooterColorPicker by remember { mutableStateOf(false) }
     var showGoalEditor by remember { mutableStateOf(false) }
     var editingGoal by remember { mutableStateOf<Goal?>(null) }
     var showEventEditor by remember { mutableStateOf(false) }
     var editingEvent by remember { mutableStateOf<Event?>(null) }
-    var showGlassTintPicker by remember { mutableStateOf(false) }
-    var showTreeTrunkColorPicker by remember { mutableStateOf(false) }
-    var showTreeLeafColorPicker by remember { mutableStateOf(false) }
-    var showTreeBloomColorPicker by remember { mutableStateOf(false) }
-
-    // Permission state for image picker
-    var hasImagePermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    Manifest.permission.READ_MEDIA_IMAGES
-                } else {
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-                }
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    // Image picker launcher
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            // Take persistable permission
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    it,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: SecurityException) {
-                // Permission not persistable, that's okay
-            }
-            preferences.setBackgroundUri(it.toString())
-        }
-    }
-
-    // Permission launcher
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasImagePermission = isGranted
-        if (isGranted) {
-            imagePickerLauncher.launch("image/*")
-        }
-    }
 
     ModernSettingsContent(
         settings = settings,
@@ -2711,7 +2649,6 @@ private fun LifeDataEditorSheet(
     var momY by remember { mutableStateOf(seedYear(settings.umrSettings.momBirthdayEpochMs)) }
 
     fun trySave(who: WhoTab, d: String, m: String, y: String) {
-        android.util.Log.d("LifeDataSave", "trySave($who, '$d', '$m', '$y')")
         val di = d.toIntOrNull() ?: return
         val mi = m.toIntOrNull() ?: return
         val yi = y.toIntOrNull() ?: return
@@ -2719,7 +2656,6 @@ private fun LifeDataEditorSheet(
         val date = runCatching { LocalDate.of(yi, mi, di) }.getOrNull() ?: return
         if (date.isAfter(today)) return
         val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        android.util.Log.d("LifeDataSave", "PERSISTING $who -> $date ($ms)")
         when (who) {
             WhoTab.ME  -> preferences.setUmrBirthday(ms)
             WhoTab.DAD -> preferences.setUmrDadBirthday(ms)

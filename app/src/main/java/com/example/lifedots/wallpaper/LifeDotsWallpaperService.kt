@@ -1,7 +1,5 @@
 package com.example.lifedots.wallpaper
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -16,14 +14,9 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.renderscript.Allocation
-import android.renderscript.Element
-import android.renderscript.RenderScript
-import android.renderscript.ScriptIntrinsicBlur
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 import android.view.WindowInsets
@@ -31,7 +24,6 @@ import com.example.lifedots.receiver.DateChangeReceiver
 import com.example.lifedots.service.KeepAliveService
 import com.example.lifedots.preferences.AnimationSettings
 import com.example.lifedots.preferences.AnimationType
-import com.example.lifedots.preferences.BackgroundSettings
 import com.example.lifedots.preferences.DotEffectSettings
 import com.example.lifedots.preferences.DotShape
 import com.example.lifedots.preferences.DotSize
@@ -180,12 +172,6 @@ class LifeDotsWallpaperService : WallpaperService() {
         // Random seed for tree branches
         private val treeRandom = Random(42)
 
-        // Background image caching
-        private var cachedBackgroundBitmap: Bitmap? = null
-        private var cachedBackgroundUri: String? = null
-        private var cachedScreenWidth = 0
-        private var cachedScreenHeight = 0
-
         private var systemSafeInsetTop = 0
         private var systemSafeInsetBottom = 0
         private var systemSafeInsetLeft = 0
@@ -233,6 +219,7 @@ class LifeDotsWallpaperService : WallpaperService() {
             super.onDestroy()
             LifeDotsPreferences.removeWallpaperChangeListener(settingsChangeListener)
             autoSwitchRotator.cancel()
+            KeepAliveService.stop(applicationContext)
             handler.removeCallbacks(animationRunner)
             handler.removeCallbacks(fluidRunner)
             handler.removeCallbacksAndMessages(null)
@@ -358,9 +345,6 @@ class LifeDotsWallpaperService : WallpaperService() {
             // ===== Existing Yil rendering flow continues unchanged below =====
             // Draw background color first
             canvas.drawColor(colors.background)
-
-            // Feature 1: Draw background image if enabled
-            drawBackgroundImage(canvas, settings.backgroundSettings, colors.background)
 
             // Draw glass effect background if enabled
             if (settings.glassEffectSettings.enabled) {
@@ -1325,123 +1309,6 @@ class LifeDotsWallpaperService : WallpaperService() {
             val g = (Color.green(color) * (1 - factor)).toInt()
             val b = (Color.blue(color) * (1 - factor)).toInt()
             return Color.rgb(r, g, b)
-        }
-
-        private fun drawBackgroundImage(canvas: Canvas, bgSettings: BackgroundSettings, fallbackColor: Int) {
-            if (!bgSettings.enabled || bgSettings.imageUri == null) return
-
-            try {
-                val bitmap = loadBackgroundBitmap(bgSettings.imageUri!!, canvas.width, canvas.height)
-                if (bitmap != null) {
-                    // Apply blur if needed
-                    val finalBitmap = if (bgSettings.blurRadius > 0) {
-                        applyBlur(bitmap, bgSettings.blurRadius)
-                    } else {
-                        bitmap
-                    }
-
-                    // Draw with opacity
-                    val paint = Paint()
-                    paint.alpha = (bgSettings.opacity * 255).toInt()
-                    canvas.drawBitmap(finalBitmap, 0f, 0f, paint)
-
-                    // Draw overlay for better dot visibility
-                    val overlayPaint = Paint()
-                    overlayPaint.color = fallbackColor
-                    overlayPaint.alpha = ((1 - bgSettings.opacity) * 200).toInt()
-                    canvas.drawRect(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), overlayPaint)
-                }
-            } catch (e: Exception) {
-                // Silently fail - background is optional
-            }
-        }
-
-        private fun loadBackgroundBitmap(uriString: String, targetWidth: Int, targetHeight: Int): Bitmap? {
-            // Return cached bitmap if available and size matches
-            if (cachedBackgroundBitmap != null &&
-                cachedBackgroundUri == uriString &&
-                cachedScreenWidth == targetWidth &&
-                cachedScreenHeight == targetHeight) {
-                return cachedBackgroundBitmap
-            }
-
-            try {
-                val uri = Uri.parse(uriString)
-                val inputStream = applicationContext.contentResolver.openInputStream(uri)
-                    ?: return null
-
-                // Decode bounds first
-                val options = BitmapFactory.Options()
-                options.inJustDecodeBounds = true
-                BitmapFactory.decodeStream(inputStream, null, options)
-                inputStream.close()
-
-                // Calculate sample size
-                options.inSampleSize = calculateInSampleSize(options, targetWidth, targetHeight)
-                options.inJustDecodeBounds = false
-
-                // Decode actual bitmap
-                val inputStream2 = applicationContext.contentResolver.openInputStream(uri)
-                    ?: return null
-                val bitmap = BitmapFactory.decodeStream(inputStream2, null, options)
-                inputStream2.close()
-
-                if (bitmap == null) return null
-
-                // Scale to fit screen
-                val scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
-                if (scaledBitmap != bitmap) {
-                    bitmap.recycle()
-                }
-
-                // Cache the result
-                cachedBackgroundBitmap?.recycle()
-                cachedBackgroundBitmap = scaledBitmap
-                cachedBackgroundUri = uriString
-                cachedScreenWidth = targetWidth
-                cachedScreenHeight = targetHeight
-
-                return scaledBitmap
-            } catch (e: Exception) {
-                return null
-            }
-        }
-
-        private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-            val height = options.outHeight
-            val width = options.outWidth
-            var inSampleSize = 1
-
-            if (height > reqHeight || width > reqWidth) {
-                val halfHeight = height / 2
-                val halfWidth = width / 2
-                while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                    inSampleSize *= 2
-                }
-            }
-            return inSampleSize
-        }
-
-        @Suppress("DEPRECATION")
-        private fun applyBlur(bitmap: Bitmap, radius: Float): Bitmap {
-            val clampedRadius = min(25f, radius)
-            if (clampedRadius <= 0) return bitmap
-
-            return try {
-                val rs = RenderScript.create(applicationContext)
-                val input = Allocation.createFromBitmap(rs, bitmap)
-                val output = Allocation.createTyped(rs, input.type)
-                val script = ScriptIntrinsicBlur.create(rs, Element.U8_4(rs))
-                script.setRadius(clampedRadius)
-                script.setInput(input)
-                script.forEach(output)
-                val blurredBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
-                output.copyTo(blurredBitmap)
-                rs.destroy()
-                blurredBitmap
-            } catch (e: Exception) {
-                bitmap
-            }
         }
 
         private fun drawFooterText(canvas: Canvas, footerSettings: FooterTextSettings, y: Float) {

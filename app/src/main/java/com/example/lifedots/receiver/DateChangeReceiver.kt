@@ -2,11 +2,15 @@ package com.example.lifedots.receiver
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.WallpaperManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import com.example.lifedots.preferences.LifeDotsPreferences
+import com.example.lifedots.service.KeepAliveService
 import java.util.Calendar
 
 /**
@@ -14,7 +18,8 @@ import java.util.Calendar
  *  - System date/time changes (manifest-registered).
  *  - A daily AlarmManager tick at ~00:00:30, as a safety net for devices where
  *    ACTION_DATE_CHANGED is dropped by aggressive battery optimization.
- *  - BOOT_COMPLETED, so the alarm is rescheduled after every reboot.
+ *  - BOOT_COMPLETED / MY_PACKAGE_REPLACED, so alarms are rescheduled after
+ *    every reboot and in-app update.
  *
  * The wallpaper engine itself also redraws on every visibility change, so the
  * worst-case experience is "wallpaper updates the moment you wake the phone".
@@ -24,9 +29,11 @@ class DateChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON" -> {
-                Log.i("LifeDots", "Boot completed — scheduling daily refresh alarm")
+                Log.i("LifeDots", "${intent.action} — scheduling daily refresh alarm")
                 scheduleDailyAlarm(context)
+                maybeStartKeepAlive(context)
                 // Note: auto-switch alarm is intentionally NOT re-armed here. The engine's
                 // process isn't necessarily running at BOOT_COMPLETED time, so the listener
                 // chain wouldn't reach the rotator. The rotator arms itself on the first
@@ -46,6 +53,28 @@ class DateChangeReceiver : BroadcastReceiver() {
                 pokeAutoSwitchRedraw(context)
             }
         }
+    }
+
+    private fun maybeStartKeepAlive(context: Context) {
+        if (!isOwnLiveWallpaperActive(context)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isIgnoringBatteryOptimizations(context)) {
+            Log.i("LifeDots", "KeepAliveService not started from background; battery exemption is not granted")
+            return
+        }
+        KeepAliveService.start(context)
+    }
+
+    private fun isOwnLiveWallpaperActive(context: Context): Boolean = try {
+        WallpaperManager.getInstance(context).wallpaperInfo?.packageName == context.packageName
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun isIgnoringBatteryOptimizations(context: Context): Boolean = try {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+    } catch (e: Exception) {
+        false
     }
 
     /**

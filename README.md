@@ -22,14 +22,14 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 
 ## Features
 
-- **Year View** — All 12 months of the current year on your lock screen, with each day rendered as a single dot. Today is tinted; past days are filled; future days are dimmed.
-- **Three layouts** — Calendar (3×4 month grid, like the screenshot above), Monthly (per-month rows), or Continuous (a single 365-dot grid).
-- **Stats line** — `Xd left · X%` and an optional event countdown anchored to the bottom of the screen, independent of where you place the calendar grid.
-- **Themes** — Light, Dark, AMOLED, or a fully custom palette (background, filled dots, empty dots, today).
-- **Dot styles** — Flat / Gradient / Outlined / Soft Glow / Neon / Embossed, in 5 sizes and 4 grid densities.
-- **Goal countdowns** — Pick one or more dates and labels (e.g. "birthday", "graduation"); the calendar tints those days and shows countdowns.
-- **Position & scale controls** — Move the grid up/down/left/right; scale it. Stats stay anchored to the bottom regardless.
-- **Daily auto-update** — A 4-layer safety net (visibility-change redraw, midnight handler, `ACTION_DATE_CHANGED` broadcast, and an `AlarmManager` daily tick) guarantees the dot for today is correct, even on aggressive battery-saver profiles.
+- **Yil view** — All 12 months of the current year on your lock screen, with each day rendered as a single dot. Today is tinted; past days are filled; future days are dimmed.
+- **Umr view** — A life-calendar mode with separate birth dates for you, your mother, and your father, plus dot or X-mark visualization.
+- **Auto-switch** — Optional wall-clock rotation between Yil and Umr with intervals from 1 second to 1 hour.
+- **Stats line** — `Xd left · X%` and optional goal/event countdowns anchored near the bottom of the screen.
+- **Themes** — Light, Dark, AMOLED, or Custom in Yil mode.
+- **Goal and event countdowns** — Pick important dates and labels; Yil goals and Umr events are kept separate.
+- **Position, scale, and transparency controls** — Move and resize each mode independently and adjust filled/empty dot opacity.
+- **Daily refresh** — Visibility redraws, date/time broadcasts, and an `AlarmManager` daily tick keep the wallpaper current. OEM battery savers can still delay background work, so the app includes a foreground keep-alive option.
 - **Privacy** — No telemetry. No accounts. The only network call is the optional GitHub release check used by the in-app updater. Settings live in your phone's local `SharedPreferences`.
 
 ---
@@ -42,7 +42,7 @@ A minimalist Android live wallpaper that visualizes the passing of the year as a
 2. Install on your Android phone (Settings → Apps → Special access → Install unknown apps; allow your file manager).
 3. Open **O'lyapmiz** → tap **Set as Wallpaper** → confirm in the system live-wallpaper preview.
 
-After the first install, the app auto-checks GitHub for new releases on every launch and shows an **Install now** card when there's an update. You can also tap **Check for updates** at the bottom of the home screen at any time.
+After the first install, the app auto-checks GitHub Releases on every launch and changes the **Update** button when a newer APK is available.
 
 ### Build from source
 
@@ -67,7 +67,7 @@ It is designed to work on **Samsung One UI** and **Xiaomi/Redmi MIUI** — the t
 
 ### Recommended phone settings
 
-The app shows a **"Keep wallpaper always running"** card on the home screen until the right settings are granted — tap the buttons there for a one-tap shortcut. The same settings can be reached manually:
+The home screen includes a **Keep Running / Allow Background / Never Sleeping** button that opens the relevant Android or OEM settings. The same settings can be reached manually:
 
 **Samsung (One UI)**
 - *In-app shortcut:* tap **1. Allow background activity** → **Allow**, then **2. Add to 'Never sleeping apps'** → toggle O'lyapmiz on.
@@ -79,7 +79,7 @@ The app shows a **"Keep wallpaper always running"** card on the home screen unti
 - *Manually:* Settings → Apps → Manage apps → O'lyapmiz → **Autostart: ON** AND Battery saver → **No restrictions**.
 - Settings → Wallpaper → My wallpapers → Live wallpapers → pick O'lyapmiz (or use the in-app *Set as Wallpaper* button).
 
-Without these, the wallpaper still updates **the moment you wake the phone after midnight** (via the visibility-change path), but Samsung's Freecess / MIUI's MemoryGuard can freeze the wallpaper process during the day, and the in-place midnight refresh may be skipped while the device is in deep doze.
+Without these, the wallpaper still redraws when it becomes visible, but Samsung's Freecess / MIUI's MemoryGuard can freeze the wallpaper process while the screen is off or the app is backgrounded.
 
 ---
 
@@ -89,19 +89,14 @@ Tap **Customize** on the home screen to open the settings screen. From there:
 
 | Section            | What it controls |
 |--------------------|------------------|
+| Mode               | Yil / Umr and optional auto-switch interval |
+| Life data          | Your, mother, and father birth dates for Umr |
 | Theme              | Light / Dark / AMOLED / Custom |
-| Dot style & size   | 6 styles × 5 sizes × 4 densities |
-| View mode          | Calendar (default) / Monthly / Continuous |
-| Calendar layout    | Columns per row (2 / 3 / 4), Monday-first weeks, month labels |
-| Highlight today    | Toggle + color |
-| Goal countdown     | Add dates + labels + colors |
-| Position           | Move and scale the calendar grid (stats stay locked at the bottom) |
-| Background photo   | Optional, with blur and opacity |
-| Footer text        | Optional, with font size + alignment + color |
-| Animations         | Fade / Pulse / Wave / Breathe / Ripple / Cascade |
-| Glass effects      | Light Frost / Heavy Frost / Acrylic / Crystal / Ice |
-| Tree growth mode   | 5 tree styles instead of dots |
-| Fluid backgrounds  | Water / Lava / Mercury / Plasma / Aurora |
+| Transparency       | Filled and empty dot opacity |
+| Calendar layout    | Yil columns per row (2×6 or 3×4) |
+| Highlight today    | Toggle the marker for today's Yil dot |
+| Goals / Events     | Yil goal countdowns and Umr event markers |
+| Position           | Move and scale the active grid |
 
 ---
 
@@ -111,7 +106,7 @@ Tap **Customize** on the home screen to open the settings screen. From there:
 - **UI** — Jetpack Compose for the onboarding + settings activities; Android Canvas API for the wallpaper rendering
 - **State** — `SharedPreferences` + `StateFlow`; no network, no database
 - **Min SDK** — 26 (Android 8.0); **Target SDK** — 35 (Android 15)
-- **Permissions** — `READ_MEDIA_IMAGES` (for the optional background photo), `RECEIVE_BOOT_COMPLETED` (to re-arm the daily refresh alarm after a reboot), `POST_NOTIFICATIONS` (for update and keep-alive notifications), and `REQUEST_INSTALL_PACKAGES` (for the in-app updater)
+- **Permissions** — `RECEIVE_BOOT_COMPLETED` (to re-arm refresh alarms after reboot/update), `POST_NOTIFICATIONS` (for update and keep-alive notifications), `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and foreground-service permissions (for the keep-alive path), `INTERNET` and `REQUEST_INSTALL_PACKAGES` (for the GitHub updater)
 - **License** — MIT, see [LICENSE](LICENSE)
 
 ### Project layout

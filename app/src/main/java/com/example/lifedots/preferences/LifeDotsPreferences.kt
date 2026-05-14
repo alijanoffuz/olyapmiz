@@ -77,14 +77,6 @@ data class CalendarViewSettings(
     val eventColor: Int = 0xFFEF5350.toInt()  // warm red
 )
 
-// Feature 1: Background Photo
-data class BackgroundSettings(
-    val enabled: Boolean = false,
-    val imageUri: String? = null,
-    val opacity: Float = 0.3f,
-    val blurRadius: Float = 0f
-)
-
 // Feature 6: Goal Tracking
 enum class GoalPosition {
     TOP, BOTTOM
@@ -262,7 +254,6 @@ data class WallpaperSettings(
     val footerTextSettings: FooterTextSettings = FooterTextSettings(),
     val viewModeSettings: ViewModeSettings = ViewModeSettings(),
     val calendarViewSettings: CalendarViewSettings = CalendarViewSettings(),
-    val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val goalSettings: GoalSettings = GoalSettings(),
     val eventSettings: EventSettings = EventSettings(),
     // Advanced feature settings
@@ -322,6 +313,11 @@ class LifeDotsPreferences(context: Context) {
 
     val settings: WallpaperSettings
         get() = _settingsFlow.value
+
+    private inline fun <reified T : Enum<T>> enumPref(key: String, default: T): T {
+        val raw = prefs.getString(key, default.name) ?: default.name
+        return runCatching { enumValueOf<T>(raw) }.getOrDefault(default)
+    }
 
     /**
      * One-time rebrand migrations for users upgrading from the upstream LifeDots
@@ -412,7 +408,7 @@ class LifeDotsPreferences(context: Context) {
 
         // Feature 3: Dot Effects
         val dotEffectSettings = DotEffectSettings(
-            style = DotStyle.valueOf(prefs.getString(KEY_DOT_STYLE, DotStyle.FLAT.name) ?: DotStyle.FLAT.name),
+            style = enumPref(KEY_DOT_STYLE, DotStyle.FLAT),
             glowRadius = prefs.getFloat(KEY_GLOW_RADIUS, 8f),
             outlineWidth = prefs.getFloat(KEY_OUTLINE_WIDTH, 2f)
         )
@@ -423,12 +419,12 @@ class LifeDotsPreferences(context: Context) {
             text = prefs.getString(KEY_FOOTER_TEXT, "") ?: "",
             fontSize = prefs.getFloat(KEY_FOOTER_FONT_SIZE, 14f),
             color = prefs.getInt(KEY_FOOTER_COLOR, 0xFFFFFFFF.toInt()),
-            alignment = TextAlignment.valueOf(prefs.getString(KEY_FOOTER_ALIGNMENT, TextAlignment.CENTER.name) ?: TextAlignment.CENTER.name)
+            alignment = enumPref(KEY_FOOTER_ALIGNMENT, TextAlignment.CENTER)
         )
 
         // Features 4 & 5: View Modes
         val viewModeSettings = ViewModeSettings(
-            mode = ViewMode.valueOf(prefs.getString(KEY_VIEW_MODE, ViewMode.CALENDAR.name) ?: ViewMode.CALENDAR.name),
+            mode = enumPref(KEY_VIEW_MODE, ViewMode.CALENDAR),
             showMonthLabels = prefs.getBoolean(KEY_SHOW_MONTH_LABELS, true),
             monthLabelColor = prefs.getInt(KEY_MONTH_LABEL_COLOR, 0xFFFFFFFF.toInt())
         )
@@ -446,14 +442,6 @@ class LifeDotsPreferences(context: Context) {
             eventColor = prefs.getInt(KEY_CALENDAR_EVENT_COLOR, 0xFFEF5350.toInt())
         )
 
-        // Feature 1: Background Photo
-        val backgroundSettings = BackgroundSettings(
-            enabled = prefs.getBoolean(KEY_BACKGROUND_ENABLED, false),
-            imageUri = prefs.getString(KEY_BACKGROUND_URI, null),
-            opacity = prefs.getFloat(KEY_BACKGROUND_OPACITY, 0.3f),
-            blurRadius = prefs.getFloat(KEY_BACKGROUND_BLUR, 0f)
-        )
-
         // Feature 6: Goal Tracking
         val goalsJson = prefs.getString(KEY_GOALS_JSON, "[]") ?: "[]"
         val goalsType = object : TypeToken<List<Goal>>() {}.type
@@ -465,7 +453,7 @@ class LifeDotsPreferences(context: Context) {
         val goalSettings = GoalSettings(
             enabled = prefs.getBoolean(KEY_GOALS_ENABLED, true),
             goals = goals,
-            position = GoalPosition.valueOf(prefs.getString(KEY_GOALS_POSITION, GoalPosition.BOTTOM.name) ?: GoalPosition.BOTTOM.name)
+            position = enumPref(KEY_GOALS_POSITION, GoalPosition.BOTTOM)
         )
 
         // Umr Events (separate from Goal — events can be past or future)
@@ -491,7 +479,7 @@ class LifeDotsPreferences(context: Context) {
         // Animation Settings
         val animationSettings = AnimationSettings(
             enabled = prefs.getBoolean(KEY_ANIMATION_ENABLED, false),
-            type = AnimationType.valueOf(prefs.getString(KEY_ANIMATION_TYPE, AnimationType.NONE.name) ?: AnimationType.NONE.name),
+            type = enumPref(KEY_ANIMATION_TYPE, AnimationType.NONE),
             speed = prefs.getFloat(KEY_ANIMATION_SPEED, 1.0f),
             intensity = prefs.getFloat(KEY_ANIMATION_INTENSITY, 0.5f)
         )
@@ -499,7 +487,7 @@ class LifeDotsPreferences(context: Context) {
         // Glass Effect Settings
         val glassEffectSettings = GlassEffectSettings(
             enabled = prefs.getBoolean(KEY_GLASS_ENABLED, false),
-            style = GlassStyle.valueOf(prefs.getString(KEY_GLASS_STYLE, GlassStyle.NONE.name) ?: GlassStyle.NONE.name),
+            style = enumPref(KEY_GLASS_STYLE, GlassStyle.NONE),
             blur = prefs.getFloat(KEY_GLASS_BLUR, 10f),
             opacity = prefs.getFloat(KEY_GLASS_OPACITY, 0.3f),
             tint = prefs.getInt(KEY_GLASS_TINT, 0x80FFFFFF.toInt())
@@ -508,7 +496,7 @@ class LifeDotsPreferences(context: Context) {
         // Tree Effect Settings
         val treeEffectSettings = TreeEffectSettings(
             enabled = prefs.getBoolean(KEY_TREE_ENABLED, false),
-            style = TreeStyle.valueOf(prefs.getString(KEY_TREE_STYLE, TreeStyle.SIMPLE.name) ?: TreeStyle.SIMPLE.name),
+            style = enumPref(KEY_TREE_STYLE, TreeStyle.SIMPLE),
             trunkColor = prefs.getInt(KEY_TREE_TRUNK_COLOR, 0xFF8B4513.toInt()),
             leafColor = prefs.getInt(KEY_TREE_LEAF_COLOR, 0xFF228B22.toInt()),
             bloomColor = prefs.getInt(KEY_TREE_BLOOM_COLOR, 0xFFFF69B4.toInt()),
@@ -518,19 +506,19 @@ class LifeDotsPreferences(context: Context) {
         // Fluid Effect Settings
         val fluidEffectSettings = FluidEffectSettings(
             enabled = prefs.getBoolean(KEY_FLUID_ENABLED, false),
-            style = FluidStyle.valueOf(prefs.getString(KEY_FLUID_STYLE, FluidStyle.NONE.name) ?: FluidStyle.NONE.name),
+            style = enumPref(KEY_FLUID_STYLE, FluidStyle.NONE),
             flowSpeed = prefs.getFloat(KEY_FLUID_FLOW_SPEED, 1.0f),
             turbulence = prefs.getFloat(KEY_FLUID_TURBULENCE, 0.5f),
             colorIntensity = prefs.getFloat(KEY_FLUID_COLOR_INTENSITY, 0.7f)
         )
 
-        val visualTheme = VisualTheme.valueOf(prefs.getString(KEY_VISUAL_THEME, VisualTheme.CLASSIC.name) ?: VisualTheme.CLASSIC.name)
+        val visualTheme = enumPref(KEY_VISUAL_THEME, VisualTheme.CLASSIC)
 
         return WallpaperSettings(
-            theme = ThemeOption.valueOf(prefs.getString(KEY_THEME, ThemeOption.AMOLED.name) ?: ThemeOption.AMOLED.name),
-            dotSize = DotSize.valueOf(prefs.getString(KEY_DOT_SIZE, DotSize.MEDIUM.name) ?: DotSize.MEDIUM.name),
-            dotShape = DotShape.valueOf(prefs.getString(KEY_DOT_SHAPE, DotShape.CIRCLE.name) ?: DotShape.CIRCLE.name),
-            gridDensity = GridDensity.valueOf(prefs.getString(KEY_GRID_DENSITY, GridDensity.COMPACT.name) ?: GridDensity.COMPACT.name),
+            theme = enumPref(KEY_THEME, ThemeOption.AMOLED),
+            dotSize = enumPref(KEY_DOT_SIZE, DotSize.MEDIUM),
+            dotShape = enumPref(KEY_DOT_SHAPE, DotShape.CIRCLE),
+            gridDensity = enumPref(KEY_GRID_DENSITY, GridDensity.COMPACT),
             highlightToday = prefs.getBoolean(KEY_HIGHLIGHT_TODAY, true),
             filledDotAlpha = prefs.getFloat(KEY_FILLED_DOT_ALPHA, 1.0f),
             emptyDotAlpha = prefs.getFloat(KEY_EMPTY_DOT_ALPHA, 1.0f),
@@ -539,7 +527,6 @@ class LifeDotsPreferences(context: Context) {
             footerTextSettings = footerTextSettings,
             viewModeSettings = viewModeSettings,
             calendarViewSettings = calendarViewSettings,
-            backgroundSettings = backgroundSettings,
             goalSettings = goalSettings,
             eventSettings = eventSettings,
             positionSettings = positionSettings,
@@ -548,22 +535,18 @@ class LifeDotsPreferences(context: Context) {
             treeEffectSettings = treeEffectSettings,
             fluidEffectSettings = fluidEffectSettings,
             visualTheme = visualTheme,
-            topViewMode = prefs.getString(KEY_TOP_VIEW_MODE, TopViewMode.YIL.name)
-                ?.let { runCatching { TopViewMode.valueOf(it) }.getOrNull() } ?: TopViewMode.YIL,
+            topViewMode = enumPref(KEY_TOP_VIEW_MODE, TopViewMode.YIL),
             autoSwitchSettings = AutoSwitchSettings(
                 enabled = prefs.getBoolean(KEY_AUTO_SWITCH_ENABLED, false),
                 intervalMs = prefs.getLong(KEY_AUTO_SWITCH_INTERVAL_MS, 5_000L),
                 referenceMs = prefs.getLong(KEY_AUTO_SWITCH_REFERENCE_MS, 0L),
-                startMode = prefs.getString(KEY_AUTO_SWITCH_START_MODE, TopViewMode.YIL.name)
-                    ?.let { runCatching { TopViewMode.valueOf(it) }.getOrNull() } ?: TopViewMode.YIL,
+                startMode = enumPref(KEY_AUTO_SWITCH_START_MODE, TopViewMode.YIL),
             ),
             umrSettings = UmrSettings(
                 birthdayEpochMs = prefs.getLong(KEY_UMR_BIRTHDAY_MS, 0L),
                 momBirthdayEpochMs = prefs.getLong(KEY_UMR_MOM_BIRTHDAY_MS, 0L),
                 dadBirthdayEpochMs = prefs.getLong(KEY_UMR_DAD_BIRTHDAY_MS, 0L),
-                visualMode = prefs.getString(KEY_UMR_VISUAL_MODE, UmrVisualMode.DOTS.name)
-                    ?.let { runCatching { UmrVisualMode.valueOf(it) }.getOrNull() }
-                    ?: UmrVisualMode.DOTS,
+                visualMode = enumPref(KEY_UMR_VISUAL_MODE, UmrVisualMode.DOTS),
                 livedAlpha = prefs.getFloat(KEY_UMR_LIVED_ALPHA, 1.0f),
                 emptyAlpha = prefs.getFloat(KEY_UMR_EMPTY_ALPHA, 0.6f),
                 totalWeeks = prefs.getInt(KEY_UMR_TOTAL_WEEKS, 4000),
@@ -732,35 +715,6 @@ class LifeDotsPreferences(context: Context) {
         prefs.edit().putInt(KEY_CALENDAR_COLUMNS, columns).apply()
         val newCalendar = _settingsFlow.value.calendarViewSettings.copy(columnsPerRow = columns)
         _settingsFlow.value = _settingsFlow.value.copy(calendarViewSettings = newCalendar)
-        notifyWallpaperChanged()
-    }
-
-    // Feature 1: Background Photo setters
-    fun setBackgroundEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_BACKGROUND_ENABLED, enabled).apply()
-        val newBackground = _settingsFlow.value.backgroundSettings.copy(enabled = enabled)
-        _settingsFlow.value = _settingsFlow.value.copy(backgroundSettings = newBackground)
-        notifyWallpaperChanged()
-    }
-
-    fun setBackgroundUri(uri: String?) {
-        prefs.edit().putString(KEY_BACKGROUND_URI, uri).apply()
-        val newBackground = _settingsFlow.value.backgroundSettings.copy(imageUri = uri)
-        _settingsFlow.value = _settingsFlow.value.copy(backgroundSettings = newBackground)
-        notifyWallpaperChanged()
-    }
-
-    fun setBackgroundOpacity(opacity: Float) {
-        prefs.edit().putFloat(KEY_BACKGROUND_OPACITY, opacity).apply()
-        val newBackground = _settingsFlow.value.backgroundSettings.copy(opacity = opacity)
-        _settingsFlow.value = _settingsFlow.value.copy(backgroundSettings = newBackground)
-        notifyWallpaperChanged()
-    }
-
-    fun setBackgroundBlur(blur: Float) {
-        prefs.edit().putFloat(KEY_BACKGROUND_BLUR, blur).apply()
-        val newBackground = _settingsFlow.value.backgroundSettings.copy(blurRadius = blur)
-        _settingsFlow.value = _settingsFlow.value.copy(backgroundSettings = newBackground)
         notifyWallpaperChanged()
     }
 
@@ -1110,7 +1064,6 @@ class LifeDotsPreferences(context: Context) {
     }
 
     fun setUmrBirthday(epochMs: Long) {
-        android.util.Log.d("LifeDataSave", "setUmrMeBirthday($epochMs)")
         prefs.edit().putLong(KEY_UMR_BIRTHDAY_MS, epochMs).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
@@ -1120,21 +1073,21 @@ class LifeDotsPreferences(context: Context) {
     }
 
     fun setUmrMomBirthday(epochMs: Long) {
-        android.util.Log.d("LifeDataSave", "setUmrMomBirthday($epochMs)")
         prefs.edit().putLong(KEY_UMR_MOM_BIRTHDAY_MS, epochMs).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
             umrSettings = current.umrSettings.copy(momBirthdayEpochMs = epochMs)
         )
+        notifyWallpaperChanged()
     }
 
     fun setUmrDadBirthday(epochMs: Long) {
-        android.util.Log.d("LifeDataSave", "setUmrDadBirthday($epochMs)")
         prefs.edit().putLong(KEY_UMR_DAD_BIRTHDAY_MS, epochMs).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
             umrSettings = current.umrSettings.copy(dadBirthdayEpochMs = epochMs)
         )
+        notifyWallpaperChanged()
     }
 
     fun setUmrLivedAlpha(alpha: Float) {
@@ -1144,6 +1097,7 @@ class LifeDotsPreferences(context: Context) {
         _settingsFlow.value = current.copy(
             umrSettings = current.umrSettings.copy(livedAlpha = v)
         )
+        notifyWallpaperChanged()
     }
 
     fun setUmrEmptyAlpha(alpha: Float) {
@@ -1153,6 +1107,7 @@ class LifeDotsPreferences(context: Context) {
         _settingsFlow.value = current.copy(
             umrSettings = current.umrSettings.copy(emptyAlpha = v)
         )
+        notifyWallpaperChanged()
     }
 
     /**
@@ -1244,12 +1199,6 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_CALENDAR_EVENT_DAY = "calendar_event_day"
         private const val KEY_CALENDAR_EVENT_LABEL = "calendar_event_label"
         private const val KEY_CALENDAR_EVENT_COLOR = "calendar_event_color"
-
-        // Feature 1: Background Photo keys
-        private const val KEY_BACKGROUND_ENABLED = "background_enabled"
-        private const val KEY_BACKGROUND_URI = "background_uri"
-        private const val KEY_BACKGROUND_OPACITY = "background_opacity"
-        private const val KEY_BACKGROUND_BLUR = "background_blur"
 
         // Feature 6: Goal Tracking keys
         private const val KEY_GOALS_ENABLED = "goals_enabled"

@@ -13,7 +13,7 @@ Use this doc as a starting point for the next project. Search by section heading
 | Display name | **O'lyapmiz** (Uzbek: "we are dying" — memento mori) |
 | Kotlin package / `applicationId` | `com.example.lifedots` (kept across rebrand for upgrade compatibility) |
 | Gradle `rootProject.name` | `Olyapmiz` |
-| GitHub repo | `alijanoffuz/olyapmiz` |
+| GitHub repo | `aiblogsuz/olyapmiz` |
 | MIT licensed | see `LICENSE` |
 | Forked from | [`humonious17/LifeDots`](https://github.com/humonious17/LifeDots) — preserved in git history under `upstream` remote |
 
@@ -45,7 +45,7 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
-        buildConfigField("String", "GITHUB_OWNER", "\"alijanoffuz\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"aiblogsuz\"")
         buildConfigField("String", "GITHUB_REPO",  "\"olyapmiz\"")
     }
     signingConfigs {
@@ -98,7 +98,6 @@ keystore.properties
 
 | Permission | Why |
 |---|---|
-| `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE` (max SDK 32) | Background photo picker (feature kept in code, hidden from UI) |
 | `RECEIVE_BOOT_COMPLETED` | Re-arm the daily refresh `AlarmManager` after reboot |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Standard Android battery exemption (Samsung Freecess / MIUI MemoryGuard counter) |
 | `POST_NOTIFICATIONS` | Android 13+ runtime permission for the foreground-service notification + updater notifications |
@@ -140,7 +139,8 @@ keystore.properties
         <action android:name="android.intent.action.DATE_CHANGED" />
         <action android:name="android.intent.action.TIMEZONE_CHANGED" />
         <action android:name="android.intent.action.TIME_SET" />
-        <action android:name="android.intent.action.BOOT_COMPLETED" />
+    <action android:name="android.intent.action.BOOT_COMPLETED" />
+    <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
         <action android:name="android.intent.action.QUICKBOOT_POWERON" />
         <action android:name="com.example.lifedots.DAILY_TICK" />
     </intent-filter>
@@ -151,7 +151,7 @@ keystore.properties
 
 ```xml
 <paths>
-    <external-files-path name="updates" path="updates/" />
+    <cache-path name="updates" path="updates/" />
 </paths>
 ```
 
@@ -173,7 +173,6 @@ data class WallpaperSettings(
     val highlightToday: Boolean = true,
     val filledDotAlpha: Float = 1.0f,
     val emptyDotAlpha: Float = 0.4f,
-    val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val footerTextSettings: FooterTextSettings = FooterTextSettings(),
     val viewModeSettings: ViewModeSettings = ViewModeSettings(),
     val calendarViewSettings: CalendarViewSettings = CalendarViewSettings(),
@@ -234,7 +233,6 @@ data class AnimationSettings(val enabled: Boolean = false, …)
 data class GlassEffectSettings(val enabled: Boolean = false, …)
 data class TreeEffectSettings(val enabled: Boolean = false, …)
 data class FluidEffectSettings(val enabled: Boolean = false, …)
-data class BackgroundSettings(val enabled: Boolean = false, …)
 
 data class FooterTextSettings(
     val enabled: Boolean = false,
@@ -267,7 +265,7 @@ fun setHighlightToday(highlight: Boolean) {
 
 ```kotlin
 private const val KEY_MIGRATION_VERSION = "migration_version"
-private const val CURRENT_MIGRATION_VERSION = 8
+private const val CURRENT_MIGRATION_VERSION = 11
 
 init { runMigrationsIfNeeded() }
 
@@ -305,7 +303,7 @@ private fun runMigrationsIfNeeded() {
 
 ### Pref keys (alphabetical, abbreviated)
 
-`backgroundColor`, `backgroundUri`, `calendar_columns`, `calendar_event_*` (removed), `calendar_monday_first`, `calendar_stats`, `current_week_color`, `custom_*_color`, `dot_shape`, `dot_size`, `dot_style`, `empty_dot_alpha`, `filled_dot_alpha`, `footer_*`, `glass_*`, `goals_enabled`, `goals_json`, `goals_position`, `grid_density`, `highlight_today`, `horizontal_offset`, `migration_version`, `month_label_color`, `scale`, `show_month_labels`, `theme`, `tree_*`, `vertical_offset`, `view_mode`, `visual_theme`.
+`calendar_columns`, `calendar_event_*` (removed), `calendar_monday_first`, `calendar_stats`, `current_week_color`, `custom_*_color`, `dot_shape`, `dot_size`, `dot_style`, `empty_dot_alpha`, `filled_dot_alpha`, `footer_*`, `glass_*`, `goals_enabled`, `goals_json`, `goals_position`, `grid_density`, `highlight_today`, `horizontal_offset`, `migration_version`, `month_label_color`, `scale`, `show_month_labels`, `theme`, `tree_*`, `vertical_offset`, `view_mode`, `visual_theme`.
 
 ---
 
@@ -335,7 +333,7 @@ class LifeDotsEngine : Engine() {
 }
 ```
 
-### Calendar view (the default, only mode users see)
+### Yil calendar view
 
 - Aspect-aware horizontal padding (Remainders-style):
   ```
@@ -415,7 +413,7 @@ Year-stats line ("Xd left · X%") draws at `statsLine1BaselineY`; goals stack do
 |---|---|---|
 | **A. Visibility-change redraw** | `onVisibilityChanged(true)` | Fires every screen wake. Calls `draw()` which reads `Calendar.getInstance().get(DAY_OF_YEAR)` fresh. Primary path. |
 | **B. midnightChecker** | `Handler.postDelayed` to 00:00:01 | Only fires while visible. Compares `lastDrawnDay` and redraws if changed. |
-| **C. ACTION_DATE_CHANGED broadcast** | System broadcast at midnight | Manifest-registered receiver toggles a pref (`setHighlightToday(currentValue)`) which fires the listener chain → engine redraws if visible. |
+| **C. ACTION_DATE_CHANGED broadcast** | System broadcast at midnight | Manifest-registered receiver calls `notifyWallpaperChanged()` directly so the engine redraws if visible. |
 | **D. AlarmManager DAILY_TICK** | `setInexactRepeating(RTC_WAKEUP, nextMidnight + 30s, INTERVAL_DAY, ...)` | Doze-friendly, no permission needed. Survives Samsung's `ACTION_DATE_CHANGED` drop under Freecess. |
 
 ```kotlin
@@ -464,8 +462,8 @@ class KeepAliveService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else startForeground(NOTIFICATION_ID, notification)
-        } catch (e: SecurityException) {
-            // POST_NOTIFICATIONS denied — wallpaper still works, just no freeze protection.
+        } catch (e: Exception) {
+            // Permission, notification, or background-start denial — wallpaper still works, just no freeze protection.
             stopSelf(); return START_NOT_STICKY
         }
         return START_STICKY
@@ -488,7 +486,7 @@ Must be white-on-transparent (Android tints). Vector at `res/drawable/ic_keepali
 
 ## 7. Battery / background-usage UX (`MainActivity`)
 
-A dismissable-when-granted card explains *why* permissions are needed and provides one-tap deep links.
+The home screen has a fourth action button for the keep-alive path. It requests notification permission on Android 13+, opens the standard battery-optimization exemption, and deep-links Samsung users to the Never Sleeping Apps screen when possible.
 
 ```kotlin
 @SuppressLint("BatteryLife")
@@ -515,7 +513,7 @@ private fun openSamsungNeverSleeping() {
 }
 ```
 
-Card visibility logic:
+Button label logic:
 
 ```kotlin
 var batteryOptimized by remember { mutableStateOf(isBatteryOptimized(context)) }
@@ -596,7 +594,7 @@ data class UpdateInfo(val versionName: String, val versionCode: Int, val downloa
 
 ```kotlin
 class UpdateInstaller(private val context: Context) {
-    // Download into external-files-path/updates/. cleanCache() wipes leftovers.
+    // Download into cache/updates/. cleanCache() wipes leftovers.
     suspend fun download(info: UpdateInfo, onProgress: (Long, Long) -> Unit): File? { … }
 
     // Critical: detect signature mismatch BEFORE launching the installer.
@@ -631,7 +629,7 @@ class UpdateInstaller(private val context: Context) {
             data = Uri.parse("package:${activity.packageName}")
         })
     }
-    fun cleanCache() { /* wipe external-files-path/updates/ */ }
+    fun cleanCache() { /* wipe cache/updates/ */ }
 }
 ```
 
@@ -650,7 +648,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 }
 ```
 
-`OnboardingScreen` keeps a `UpdateUiState` sealed interface (`Idle`, `Checking`, `UpToDate`, `Available`, `Downloading`, `Ready`, `SignatureMismatch`, `Error`). `LaunchedEffect(autoCheckOnLaunch)` runs the silent check on entry; an OutlinedButton lets the user re-trigger explicitly. The card swaps content based on state, with progress %, "Install now" button, sig-mismatch instructions + "Uninstall current version" CTA, etc.
+`OnboardingScreen` keeps a `UpdateUiState` sealed interface (`Idle`, `Checking`, `UpToDate`, `Available`, `Downloading`, `Ready`, `InstallPermissionRequired`, `SignatureMismatch`, `Error`). `LaunchedEffect(autoCheckOnLaunch)` runs the silent check on entry; the home Update button changes label/action based on state.
 
 ---
 
@@ -740,7 +738,7 @@ LifeDots/
     └── src/main/
         ├── AndroidManifest.xml
         ├── java/com/example/lifedots/
-        │   ├── MainActivity.kt             # Onboarding + battery card + update card
+        │   ├── MainActivity.kt             # Onboarding + wallpaper, keep-running, update actions
         │   ├── SettingsActivity.kt         # Compose settings (6 sections: theme, transparency, footer, position, view mode, goals, custom colors)
         │   ├── R.kt                        # generated
         │   ├── preferences/
@@ -756,7 +754,7 @@ LifeDots/
         │   ├── wallpaper/
         │   │   └── LifeDotsWallpaperService.kt  # main render loop (calendar / continuous / monthly modes)
         │   └── ui/
-        │       ├── components/ (GoalEditorDialog, ColorPicker, DatePickerDialog)
+        │       ├── components/ (GoalEditorDialog, DatePickerDialog, UxFeedback)
         │       └── theme/
         └── res/
             ├── drawable/
@@ -771,9 +769,7 @@ LifeDots/
             ├── values/{strings.xml, colors.xml, themes.xml}
             └── xml/
                 ├── wallpaper.xml                # service meta-data
-                ├── file_provider_paths.xml      # external-files-path/updates/
-                ├── backup_rules.xml
-                └── data_extraction_rules.xml
+                └── file_provider_paths.xml      # cache/updates/
 ```
 
 ---
@@ -825,7 +821,7 @@ Compose Sliders don't always respond to taps at arbitrary points the way real `S
 1. Settings → Battery → Background usage limits → **Never sleeping apps** → add the app.
 2. Settings → Apps → [app] → Battery → **Unrestricted**.
 3. When setting wallpaper: **Home and lock screens** (not just home).
-4. (In-app shortcut: the "Keep wallpaper always running" card on the home screen runs both system flows for you.)
+4. (In-app shortcut: the Keep Running / Allow Background / Never Sleeping button on the home screen opens the relevant system flow.)
 
 ### Xiaomi / Redmi (MIUI / HyperOS)
 

@@ -34,10 +34,11 @@ class UpdateChecker(private val context: Context) {
     private val tag = "LifeDots/Updater"
 
     suspend fun check(): Result = withContext(Dispatchers.IO) {
+        var conn: HttpURLConnection? = null
         try {
             val url = URL("https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases/latest")
             Log.i(tag, "Fetching $url")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 8_000
                 readTimeout = 8_000
@@ -50,7 +51,6 @@ class UpdateChecker(private val context: Context) {
                 return@withContext Result.NetworkError("HTTP $code from GitHub")
             }
             val body = conn.inputStream.bufferedReader().use(BufferedReader::readText)
-            conn.disconnect()
 
             val json = JSONObject(body)
             val tagName = json.getString("tag_name")                 // e.g. "v1.2.3"
@@ -66,28 +66,40 @@ class UpdateChecker(private val context: Context) {
                 return@withContext Result.UpToDate(versionName)
             }
 
-            // Find the .apk asset
+            // Prefer the stable release asset name; fall back to any APK if an
+            // older release was uploaded before the stable name existed.
             val assets = json.getJSONArray("assets")
+            val apkAssets = mutableListOf<JSONObject>()
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val name = asset.getString("name")
                 if (name.endsWith(".apk", ignoreCase = true)) {
-                    return@withContext Result.UpdateAvailable(
-                        UpdateInfo(
-                            versionName = versionName,
-                            versionCode = newVersionCode,
-                            downloadUrl = asset.getString("browser_download_url"),
-                            downloadSize = asset.optLong("size", 0L),
-                            releaseNotes = notes,
-                            htmlUrl = htmlUrl
-                        )
-                    )
+                    apkAssets += asset
                 }
+            }
+            val asset = apkAssets.firstOrNull {
+                it.getString("name").equals("olyapmiz.apk", ignoreCase = true)
+            } ?: apkAssets.firstOrNull {
+                it.getString("name").equals("olyapmiz-$versionName.apk", ignoreCase = true)
+            } ?: apkAssets.firstOrNull()
+            if (asset != null) {
+                return@withContext Result.UpdateAvailable(
+                    UpdateInfo(
+                        versionName = versionName,
+                        versionCode = newVersionCode,
+                        downloadUrl = asset.getString("browser_download_url"),
+                        downloadSize = asset.optLong("size", 0L),
+                        releaseNotes = notes,
+                        htmlUrl = htmlUrl
+                    )
+                )
             }
             Result.NetworkError("Release $tagName has no APK asset")
         } catch (e: Exception) {
             Log.w(tag, "Update check failed", e)
             Result.NetworkError(e.message ?: e.javaClass.simpleName)
+        } finally {
+            conn?.disconnect()
         }
     }
 

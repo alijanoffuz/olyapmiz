@@ -2,5 +2,5 @@
 <paths>
     <!-- The updater writes the downloaded APK here; FileProvider exposes it as
          a content:// URI that the system installer can read. -->
-    <external-files-path name="updates" path="updates/" />
+    <cache-path name="updates" path="updates/" />
 </paths>

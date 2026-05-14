@@ -16,8 +16,10 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -37,22 +39,16 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +66,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,15 +73,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.lifedots.preferences.LifeDotsPreferences
+import com.example.lifedots.service.KeepAliveService
 import com.example.lifedots.ui.components.rememberUxFeedback
-import com.example.lifedots.ui.theme.BrandColors
 import com.example.lifedots.ui.theme.LifeDotsTheme
 import com.example.lifedots.updater.UpdateChecker
 import com.example.lifedots.updater.UpdateInfo
@@ -178,10 +170,10 @@ class MainActivity : ComponentActivity() {
         }
         if (tryStart(deviceCare, "SAMSUNG_DEVICE_CARE")) return
 
-        // Fallback 2: stock Android battery settings (works on Xiaomi/Redmi too)
-        tryStart(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-        }, "APP_NOTIFICATION_SETTINGS")
+        // Fallback 2: app details, where most OEMs expose their battery/autostart controls.
+        tryStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        }, "APP_DETAILS_SETTINGS")
     }
 
     private fun openWallpaperPicker() {
@@ -302,13 +294,30 @@ fun OnboardingScreen(
                     updateState = UpdateUiState.SignatureMismatch(info)
                 }
             }
+            UpdateInstaller.LaunchResult.Failed -> {
+                pendingInstallApk = null
+                pendingInstallInfo = null
+                updateState = UpdateUiState.Error("Could not open Android package installer")
+            }
         }
     }
 
+    var batteryOptimized by remember { mutableStateOf(isBatteryOptimized(context)) }
+    var notificationsAllowed by remember { mutableStateOf(hasPostNotificationsPermission(context)) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        notificationsAllowed = hasPostNotificationsPermission(context)
+        if (notificationsAllowed) KeepAliveService.start(context)
+    }
+
+    @Suppress("DEPRECATION")
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, pendingInstallApk) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                batteryOptimized = isBatteryOptimized(context)
+                notificationsAllowed = hasPostNotificationsPermission(context)
                 val apk = pendingInstallApk
                 if (apk != null && context.packageManager.canRequestPackageInstalls()) {
                     handleInstall(apk)
@@ -396,6 +405,27 @@ fun OnboardingScreen(
         }
     }
 
+    fun handleKeepRunningButton() {
+        feedback.click()
+        when {
+            !notificationsAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            batteryOptimized -> {
+                KeepAliveService.start(context)
+                onAllowBackground()
+            }
+            isSamsungLikeDevice() -> {
+                KeepAliveService.start(context)
+                onOpenSamsungNeverSleeping()
+            }
+            else -> {
+                KeepAliveService.start(context)
+                onAllowBackground()
+            }
+        }
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -427,7 +457,7 @@ fun OnboardingScreen(
             modifier = Modifier
                 .offset(x = screenWidth * 0.09f, y = screenHeight * 0.665f)
                 .width(screenWidth * 0.82f)
-                .height(screenHeight * 0.205f),
+                .height(screenHeight * 0.275f),
             verticalArrangement = Arrangement.spacedBy(screenHeight * 0.014f)
         ) {
             HomeActionButton(
@@ -468,12 +498,26 @@ fun OnboardingScreen(
                 enabled = updateState !is UpdateUiState.Checking &&
                     updateState !is UpdateUiState.Downloading
             )
+            HomeActionButton(
+                label = when {
+                    !notificationsAllowed -> "Allow Notifications"
+                    batteryOptimized -> "Allow Background"
+                    isSamsungLikeDevice() -> "Never Sleeping"
+                    else -> "Keep Running"
+                },
+                icon = HomeIcon.Settings,
+                onClick = { handleKeepRunningButton() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                gold = gold,
+                large = true
+            )
         }
     }
 }
 
 private enum class HomeIcon {
-    Menu,
     Settings,
     Picture,
     Palette,
@@ -508,27 +552,6 @@ private fun PaintingHomeScrim(modifier: Modifier = Modifier) {
             )
         )
         drawRect(Color.Black.copy(alpha = 0.01f))
-    }
-}
-
-@Composable
-private fun RoundHomeButton(
-    icon: HomeIcon,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    gold: Color
-) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Color(0xB0050403))
-            .border(BorderStroke(1.dp, gold.copy(alpha = 0.42f)), CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.size(34.dp)) {
-            drawHomeIcon(icon, gold, 4.dp.toPx())
-        }
     }
 }
 
@@ -610,191 +633,6 @@ private fun GoldOrnament(
 }
 
 @Composable
-private fun FocusParchmentCard(modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFFE4D8BC),
-                        Color(0xFFC8B58E),
-                        Color(0xFFE0D0A9)
-                    )
-                )
-            )
-            .border(BorderStroke(1.dp, Color(0x885E4524)), shape)
-    ) {
-        ParchmentTexture(modifier = Modifier.matchParentSize())
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 22.dp, top = 12.dp, bottom = 10.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Today’s Focus",
-                color = Color(0xFF17120A),
-                fontFamily = FontFamily.Serif,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Become better\nthan yesterday.",
-                color = Color(0xFF0C0905),
-                fontFamily = FontFamily.Serif,
-                fontSize = 20.sp,
-                lineHeight = 25.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        DeskClockSketch(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp)
-                .size(112.dp),
-            ink = Color(0xFF1A130B)
-        )
-    }
-}
-
-@Composable
-private fun ParchmentTexture(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        repeat(42) { index ->
-            val x = ((index * 37) % 100) / 100f * size.width
-            val y = ((index * 61) % 100) / 100f * size.height
-            drawCircle(
-                color = Color.White.copy(alpha = if (index % 2 == 0) 0.10f else 0.06f),
-                radius = (3 + index % 8).dp.toPx(),
-                center = Offset(x, y)
-            )
-        }
-        repeat(14) { index ->
-            val start = Offset(
-                ((index * 53) % 100) / 100f * size.width,
-                ((index * 29) % 100) / 100f * size.height
-            )
-            drawLine(
-                color = Color(0xFF4C321A).copy(alpha = 0.12f),
-                start = start,
-                end = start + Offset(((index % 5) - 2) * 18.dp.toPx(), (8 + index % 9).dp.toPx()),
-                strokeWidth = 0.7.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-        }
-    }
-}
-
-@Composable
-private fun DeskClockSketch(
-    modifier: Modifier = Modifier,
-    ink: Color
-) {
-    Canvas(modifier = modifier) {
-        val stroke = 2.dp.toPx()
-        val clockCenter = Offset(size.width * 0.66f, size.height * 0.42f)
-        val clockRadius = size.minDimension * 0.25f
-        val paper = Path().apply {
-            moveTo(size.width * 0.18f, size.height * 0.52f)
-            lineTo(size.width * 0.86f, size.height * 0.42f)
-            lineTo(size.width * 0.92f, size.height * 0.76f)
-            lineTo(size.width * 0.28f, size.height * 0.84f)
-            close()
-        }
-        drawPath(paper, ink.copy(alpha = 0.16f))
-        drawPath(paper, ink.copy(alpha = 0.42f), style = Stroke(width = 1.dp.toPx()))
-        drawRoundRect(
-            color = ink.copy(alpha = 0.20f),
-            topLeft = Offset(size.width * 0.09f, size.height * 0.42f),
-            size = Size(size.width * 0.26f, size.height * 0.18f),
-            cornerRadius = CornerRadius(11.dp.toPx(), 11.dp.toPx()),
-            style = Stroke(width = 2.dp.toPx())
-        )
-        drawCircle(ink.copy(alpha = 0.86f), radius = clockRadius, center = clockCenter, style = Stroke(width = stroke))
-        drawCircle(ink.copy(alpha = 0.60f), radius = clockRadius * 0.76f, center = clockCenter, style = Stroke(width = 1.dp.toPx()))
-        for (i in 0 until 12) {
-            val angle = (i * 30f - 90f) * PI.toFloat() / 180f
-            val outer = Offset(
-                clockCenter.x + cos(angle) * clockRadius * 0.88f,
-                clockCenter.y + sin(angle) * clockRadius * 0.88f
-            )
-            val inner = Offset(
-                clockCenter.x + cos(angle) * clockRadius * 0.72f,
-                clockCenter.y + sin(angle) * clockRadius * 0.72f
-            )
-            drawLine(ink.copy(alpha = 0.58f), inner, outer, strokeWidth = 1.dp.toPx())
-        }
-        drawLine(ink, clockCenter, clockCenter + Offset(0f, -clockRadius * 0.52f), strokeWidth = 1.6.dp.toPx(), cap = StrokeCap.Round)
-        drawLine(ink, clockCenter, clockCenter + Offset(clockRadius * 0.40f, clockRadius * 0.25f), strokeWidth = 1.6.dp.toPx(), cap = StrokeCap.Round)
-        drawCircle(ink, radius = 2.dp.toPx(), center = clockCenter)
-        drawCircle(ink.copy(alpha = 0.76f), radius = clockRadius * 0.22f, center = clockCenter + Offset(0f, -clockRadius * 1.12f), style = Stroke(width = 2.dp.toPx()))
-        drawLine(
-            ink.copy(alpha = 0.56f),
-            Offset(size.width * 0.22f, size.height * 0.69f),
-            Offset(size.width * 0.86f, size.height * 0.65f),
-            strokeWidth = 1.dp.toPx()
-        )
-    }
-}
-
-@Composable
-private fun QuoteCard(
-    modifier: Modifier = Modifier,
-    gold: Color
-) {
-    val shape = RoundedCornerShape(18.dp)
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Color(0xC9070604))
-            .border(BorderStroke(1.dp, gold.copy(alpha = 0.34f)), shape),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "“",
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-12).dp),
-            color = gold.copy(alpha = 0.22f),
-            fontFamily = FontFamily.Serif,
-            fontSize = 64.sp,
-            lineHeight = 64.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(top = 10.dp)
-        ) {
-            Text(
-                text = "We are our choices.",
-                color = gold,
-                fontFamily = FontFamily.Serif,
-                fontStyle = FontStyle.Italic,
-                fontSize = 20.sp,
-                lineHeight = 25.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "— J.P. Sartre",
-                color = gold.copy(alpha = 0.90f),
-                fontFamily = FontFamily.Serif,
-                fontSize = 14.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            GoldOrnament(
-                modifier = Modifier.size(width = 106.dp, height = 12.dp),
-                gold = gold
-            )
-        }
-    }
-}
-
-@Composable
 private fun HomeActionButton(
     label: String,
     icon: HomeIcon,
@@ -848,13 +686,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHomeIcon(
 ) {
     val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
     when (icon) {
-        HomeIcon.Menu -> {
-            val startX = size.width * 0.18f
-            val endX = size.width * 0.82f
-            listOf(0.32f, 0.50f, 0.68f).forEach { y ->
-                drawLine(color, Offset(startX, size.height * y), Offset(endX, size.height * y), strokeWidth, StrokeCap.Round)
-            }
-        }
         HomeIcon.Settings -> {
             val center = Offset(size.width / 2f, size.height / 2f)
             val outer = size.minDimension * 0.34f
@@ -935,85 +766,6 @@ private fun hasPostNotificationsPermission(context: Context): Boolean {
         ) == PackageManager.PERMISSION_GRANTED
 }
 
-@Composable
-private fun KeepAlwaysRunningCard(
-    showBatteryButton: Boolean,
-    showNotificationButton: Boolean,
-    showSamsungButton: Boolean,
-    onAllowBackground: () -> Unit,
-    onAllowNotifications: () -> Unit,
-    onOpenSamsungNeverSleeping: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = BrandColors.InkBlack
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Keep wallpaper always running",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = BrandColors.AmberGold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Samsung and Xiaomi can freeze background apps. Allow these so the calendar doesn't disappear from your lock screen.",
-                fontSize = 13.sp,
-                color = BrandColors.OffWhite,
-                lineHeight = 18.sp
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (showBatteryButton) {
-                OutlinedButton(
-                    onClick = onAllowBackground,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, BrandColors.AmberGold),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = BrandColors.AmberGold,
-                    ),
-                ) {
-                    Text("Allow background activity", fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            if (showNotificationButton) {
-                OutlinedButton(
-                    onClick = onAllowNotifications,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, BrandColors.AmberGold),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = BrandColors.AmberGold,
-                    ),
-                ) {
-                    Text("Allow notifications", fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            if (showSamsungButton) {
-                OutlinedButton(
-                    onClick = onOpenSamsungNeverSleeping,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, BrandColors.AmberGold),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = BrandColors.AmberGold,
-                    ),
-                ) {
-                    Text("Add to 'Never sleeping apps'", fontSize = 14.sp)
-                }
-            }
-        }
-    }
-}
-
 sealed interface UpdateUiState {
     data object Idle : UpdateUiState
     data object Checking : UpdateUiState
@@ -1026,207 +778,8 @@ sealed interface UpdateUiState {
     data class Error(val message: String) : UpdateUiState
 }
 
-@Composable
-private fun UpdateCard(
-    state: UpdateUiState,
-    onDownload: (UpdateInfo) -> Unit,
-    onInstall: (File) -> Unit,
-    onLaunchSelfUninstall: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    if (state is UpdateUiState.Idle || state is UpdateUiState.Checking) return
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = BrandColors.InkBlack
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            when (state) {
-                is UpdateUiState.Available -> {
-                    Text(
-                        "Update available: v${state.info.versionName}",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BrandColors.AmberGold
-                    )
-                    if (state.info.releaseNotes.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            state.info.releaseNotes.take(200),
-                            fontSize = 13.sp,
-                            color = BrandColors.OffWhite,
-                            lineHeight = 18.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { onDownload(state.info) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BrandColors.AmberGold,
-                            contentColor = BrandColors.InkBlack,
-                        ),
-                    ) {
-                        Text("Download and install", fontSize = 14.sp)
-                    }
-                }
-                is UpdateUiState.Downloading -> {
-                    Text(
-                        "Downloading v${state.info.versionName}…",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BrandColors.AmberGold
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = BrandColors.AmberGold
-                        )
-                        Spacer(modifier = Modifier.size(12.dp))
-                        Text(
-                            "${(state.progress * 100).toInt()}%",
-                            fontSize = 14.sp,
-                            color = BrandColors.OffWhite
-                        )
-                    }
-                }
-                is UpdateUiState.Ready -> {
-                    Text(
-                        "Ready to install v${state.info.versionName}",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BrandColors.AmberGold
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = { onInstall(state.apk) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BrandColors.AmberGold,
-                            contentColor = BrandColors.InkBlack,
-                        ),
-                    ) {
-                        Text("Install now", fontSize = 14.sp)
-                    }
-                }
-                is UpdateUiState.InstallPermissionRequired -> {
-                    Text(
-                        "Install permission needed",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BrandColors.AmberGold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "Allow O'lyapmiz to install downloaded updates. The installer will continue when you return.",
-                        fontSize = 13.sp,
-                        color = BrandColors.OffWhite,
-                        lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { onInstall(state.apk) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BrandColors.AmberGold,
-                            contentColor = BrandColors.InkBlack,
-                        ),
-                    ) {
-                        Text("Open install permission", fontSize = 14.sp)
-                    }
-                }
-                is UpdateUiState.UpToDate -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "You're on the latest version (${state.version}).",
-                            fontSize = 14.sp,
-                            color = BrandColors.OffWhite,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(
-                            onClick = onDismiss,
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = BrandColors.AmberGold,
-                            ),
-                        ) {
-                            Text("OK", fontSize = 14.sp)
-                        }
-                    }
-                }
-                is UpdateUiState.SignatureMismatch -> {
-                    Text(
-                        "One-time uninstall needed",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BrandColors.AmberGold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "Your current install was signed with a different key " +
-                            "(likely a debug or sideloaded build). Android won't install " +
-                            "v${state.info.versionName} on top of it. Tap below to " +
-                            "uninstall, then reopen the downloaded APK to install fresh — " +
-                            "from then on, all future updates work in-place automatically.",
-                        fontSize = 13.sp,
-                        color = BrandColors.OffWhite,
-                        lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = onLaunchSelfUninstall,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BrandColors.AmberGold,
-                            contentColor = BrandColors.InkBlack,
-                        ),
-                    ) {
-                        Text("Uninstall current version", fontSize = 14.sp)
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = BrandColors.AmberGold,
-                        ),
-                    ) {
-                        Text("Later", fontSize = 14.sp)
-                    }
-                }
-                is UpdateUiState.Error -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Couldn't check for updates: ${state.message}",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(
-                            onClick = onDismiss,
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = BrandColors.AmberGold,
-                            ),
-                        ) {
-                            Text("OK", fontSize = 14.sp)
-                        }
-                    }
-                }
-                else -> Unit
-            }
-        }
-    }
+private fun isSamsungLikeDevice(): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    val brand = Build.BRAND.lowercase()
+    return manufacturer.contains("samsung") || brand.contains("samsung")
 }

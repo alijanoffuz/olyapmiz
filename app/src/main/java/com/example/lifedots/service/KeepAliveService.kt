@@ -46,9 +46,9 @@ class KeepAliveService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-        } catch (e: SecurityException) {
-            // POST_NOTIFICATIONS denied — stop quietly. The wallpaper still
-            // works; we just lose the freeze-protection layer.
+        } catch (e: Exception) {
+            // Permission, notification, or background-start denial. The wallpaper
+            // still works; we just lose the freeze-protection layer.
             Log.w(TAG, "Foreground start denied, stopping service", e)
             stopSelf()
             return START_NOT_STICKY
@@ -105,6 +105,14 @@ class KeepAliveService : Service() {
                 ContextCompat.startForegroundService(context, intent)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to start KeepAliveService", e)
+            }
+        }
+
+        fun stop(context: Context) {
+            try {
+                context.stopService(Intent(context, KeepAliveService::class.java))
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to stop KeepAliveService", e)
             }
         }
     }
