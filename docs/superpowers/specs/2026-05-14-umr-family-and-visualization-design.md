@@ -318,14 +318,63 @@ fun WheelDatePicker(
     initialDay: Int,            // 1..31
     initialMonth: Int,          // 1..12
     initialYear: Int,           // e.g. 2004
-    yearRange: IntRange = (today.year - 100)..today.year,
+    yearRange: IntRange = (today.year - 120)..today.year,
     onChange: (day: Int, month: Int, year: Int) -> Unit,
+    modifier: Modifier = Modifier,
 )
 ```
 
-Three `LazyColumn`s with `flingBehavior = rememberSnapFlingBehavior(state)`. Center selection frame is a thin gold-stroked rounded rectangle painted by the parent. Rows scale with distance from centre — text 100 % at centre, 88 % at ±1 row, 70 % at ±2 rows, all in muted gold; centre row is bright gold. Days clamp to the valid range for the selected month/year (e.g. Feb leap-year math).
+#### Visual reference
 
-Validation: if user picks a future date, "Done" is disabled (and shows a hint `"Date can't be in the future."`). Min year is `today.year - 120` to allow elderly parents.
+Exactly matches the user-provided mockup: three roller columns (DD · MM · YYYY) on the deep-ink Umr sheet background, with the centre item lifted into a bordered amber-gold "selection chip" and adjacent rows fading to muted grey. Inline label row beneath each column reads `DD`, `MM`, `YYYY` in small caps amber.
+
+```
+ ┌──────────┐   ┌────────────┐   ┌──────────┐
+ │   02     │   │  August    │   │   2002   │   ← muted, ~62 % alpha
+ │   03     │   │  September │   │   2003   │   ← muted, ~80 % alpha
+ │ ┌──────┐ │ : │ ┌────────┐ │ : │ ┌──────┐ │
+ │ │  04  │ │   │ │October │ │   │ │ 2004 │ │   ← centre selection (bright)
+ │ └──────┘ │   │ └────────┘ │   │ └──────┘ │
+ │   05     │   │  November  │   │   2005   │
+ │   06     │   │  December  │   │   2006   │
+ └──────────┘   └────────────┘   └──────────┘
+     DD             MM              YYYY
+```
+
+#### Layout
+
+- Three column cards, each a `RoundedCornerShape(20.dp)` with a 1 dp `HairlineGold` border and a faint vertical gradient fill (`InkBlack` → `InkBlackElevated`).
+- 5 visible rows per column. Row height ≈ `64.dp`; total card height ≈ `320.dp`.
+- Between columns: 12 dp horizontal gap with a single `":"` glyph in muted amber, vertically centred on the selection row.
+- Below the row of three cards: a `Row` of three `Text`s `"DD" / "MM" / "YYYY"` in `SmallCaps`, amber-gold at 70 % alpha, top-padded 8 dp, horizontally aligned to each column's centre.
+
+#### Centre selection chip
+
+- A `Box` overlay at the column's vertical centre, `RoundedCornerShape(14.dp)`, height = one row, border 1.dp `AmberGold` at 80 % alpha, with a soft inner shadow / dark fill that's slightly lighter than the column background (≈ 6 % white tint). Conveys the "lifted" capsule look in the screenshot.
+
+#### Row styling
+
+| Position | Text colour | Text size | Alpha | Font weight |
+|---|---|---|---|---|
+| centre (Δ = 0) | `AmberGold` | 28 sp | 100 % | SemiBold |
+| ±1 row | `OffWhite` | 18 sp | 78 % | Normal |
+| ±2 rows | `OffWhite` | 16 sp | 50 % | Normal |
+| > ±2 rows | n/a | — | clipped by card edge | — |
+
+Sizes interpolate smoothly during fling — at scroll offset 0.5 between rows, the affected rows show 23 sp / 17 sp etc. (linear interpolation of size + alpha).
+
+#### Mechanics
+
+- Each column is a `LazyColumn` with `flingBehavior = rememberSnapFlingBehavior(state)` so the wheel snaps to row centres.
+- `state.firstVisibleItemIndex + offsetFraction` drives both the emitted value and the per-row size/alpha calculations. Recomposed via `derivedStateOf` to avoid per-frame allocations.
+- Wrap-around for months (Dec → Jan in the next year) and days (when a month has fewer days) is implemented by recomputing the valid `dayCount` for the *currently-snapped* month/year combo and clamping the day column.
+- Haptic tick on each row snap (light click, opt-in to `umrSettings`-level vibrate setting via `rememberUxFeedback`).
+
+#### Validation
+
+- Future date guard: if the picked `(day, month, year)` is strictly later than today, the editor sheet's "Done" button disables and shows a subtle inline hint `"Date can't be in the future."` below the picker.
+- Minimum year: `today.year - 120` (allows 120-year-old parents — generous).
+- Leap-year math: handled by `java.time.YearMonth.of(year, month).lengthOfMonth()`.
 
 ---
 
