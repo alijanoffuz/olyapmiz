@@ -209,6 +209,8 @@ enum class VisualTheme {
 
 enum class TopViewMode { YIL, UMR }
 
+enum class UmrVisualMode { DOTS, X_MARKS }
+
 data class AutoSwitchSettings(
     val enabled: Boolean = false,
     val intervalMs: Long = 5_000L,
@@ -218,6 +220,12 @@ data class AutoSwitchSettings(
 
 data class UmrSettings(
     val birthdayEpochMs: Long = 0L,
+    val momBirthdayEpochMs: Long = 0L,
+    val dadBirthdayEpochMs: Long = 0L,
+    val visualMode: UmrVisualMode = UmrVisualMode.DOTS,
+    val livedAlpha: Float = 1.0f,
+    val emptyAlpha: Float = 0.6f,
+    val totalWeeks: Int = 4000,
 )
 
 data class WallpaperSettings(
