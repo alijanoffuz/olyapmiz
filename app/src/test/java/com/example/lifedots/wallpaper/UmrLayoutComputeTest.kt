@@ -64,4 +64,15 @@ class UmrLayoutComputeTest {
         assertTrue(l.dotSizePx >= 1f)
         assertTrue(l.gridWidthPx >= 0f)
     }
+
+    @Test fun `counter band is reserved above the grid on tall phones`() {
+        val l = compute(1080, 2400)
+        assertTrue("counter band must reserve > 0px on a 1080x2400 canvas", l.counterBandHeightPx > 0f)
+        assertEquals(
+            "gridTopPx must equal safeTopPx + counterBandHeightPx",
+            l.safeTopPx + l.counterBandHeightPx,
+            l.gridTopPx,
+            0.5f,
+        )
+    }
 }

@@ -888,7 +888,7 @@ class LifeDotsWallpaperService : WallpaperService() {
                 val row = i / UmrLayoutCompute.COLS
                 val col = i % UmrLayoutCompute.COLS
                 val cx = layout.gridLeftPx + col * (layout.dotSizePx + layout.dotGapPx) + r
-                val cy = layout.safeTopPx + row * (layout.dotSizePx + layout.dotGapPx) + r
+                val cy = layout.gridTopPx + row * (layout.dotSizePx + layout.dotGapPx) + r
 
                 when {
                     // Birthday unset — render everything as future (empty).

@@ -194,6 +194,12 @@ data class UmrLayout(
     val gridHeightPx: Float,
     /** Where to start drawing the grid's leftmost column (centered in the available band). */
     val gridLeftPx: Float,
+    /** Height of the counter band reserved above the dot grid. */
+    val counterBandHeightPx: Float = 0f,
+    /** Canvas-top offset where the counter band itself starts (equals safeTopPx). */
+    val counterBandTopPx: Float = 0f,
+    /** Canvas-top offset where the dot grid starts (safeTopPx + counterBandHeightPx). */
+    val gridTopPx: Float = 0f,
 )
 
 /**
@@ -230,6 +236,13 @@ object UmrLayoutCompute {
     /** Hard cap on dot diameter — keeps 4160 dots from looking chunky on high-DPI displays. */
     const val DOT_SIZE_CAP_PX = 12f
 
+    /** Fraction of canvas height reserved for the 3 stat counters above the grid. */
+    private fun counterBandRatio(aspect: Float): Float = when {
+        aspect > 2.1f -> 0.05f
+        aspect > 2.0f -> 0.055f
+        else -> 0.06f
+    }
+
     fun compute(
         widthPx: Int,
         heightPx: Int,
@@ -263,8 +276,11 @@ object UmrLayoutCompute {
             systemSafeInsetBottomPx.toFloat(),
         )
 
+        val counterBandHeightPx = height * counterBandRatio(aspect)
+        val gridTopPx = safeTopPx + counterBandHeightPx
+
         val availWidth = (width - 2f * paddingXPx).coerceAtLeast(1f)
-        val availHeight = (height - safeTopPx - safeBottomPx).coerceAtLeast(1f)
+        val availHeight = (height - gridTopPx - safeBottomPx).coerceAtLeast(1f)
 
         val gapRatio = dotGapRatio(widthPx)
         // gridWidth = COLS*d + (COLS-1)*gapRatio*d  =>  d = availWidth / (COLS + (COLS-1)*gapRatio)
@@ -276,7 +292,7 @@ object UmrLayoutCompute {
         val gridWidthPx = COLS * dotSizePx + (COLS - 1) * dotGapPx
         val gridHeightPx = ROWS * dotSizePx + (ROWS - 1) * dotGapPx
         val gridLeftPx = paddingXPx + (availWidth - gridWidthPx) / 2f
-        val gridBottomPx = safeTopPx + gridHeightPx
+        val gridBottomPx = gridTopPx + gridHeightPx
 
         return UmrLayout(
             paddingXPx = paddingXPx,
@@ -287,6 +303,9 @@ object UmrLayoutCompute {
             gridWidthPx = gridWidthPx,
             gridHeightPx = gridHeightPx,
             gridLeftPx = gridLeftPx,
+            counterBandHeightPx = counterBandHeightPx,
+            counterBandTopPx = safeTopPx,
+            gridTopPx = gridTopPx,
         )
     }
 }
