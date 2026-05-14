@@ -108,6 +108,22 @@ data class GoalSettings(
     val position: GoalPosition = GoalPosition.BOTTOM
 )
 
+// Umr-only feature. Separate from Goal: events can be past OR future, and
+// future ones appear as a "weeks remaining" line under the Umr grid. Same
+// data shape as Goal but kept as a distinct type so the two never bleed
+// into each other.
+data class Event(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val targetDate: Long,
+    val color: Int = 0xFFE53935.toInt()
+)
+
+data class EventSettings(
+    val enabled: Boolean = true,
+    val events: List<Event> = emptyList(),
+)
+
 data class CustomColors(
     val backgroundColor: Int = 0xFF1A1A1A.toInt(),
     val filledDotColor: Int = 0xFFE0E0E0.toInt(),
@@ -244,6 +260,7 @@ data class WallpaperSettings(
     val calendarViewSettings: CalendarViewSettings = CalendarViewSettings(),
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val goalSettings: GoalSettings = GoalSettings(),
+    val eventSettings: EventSettings = EventSettings(),
     // Advanced feature settings
     val positionSettings: PositionSettings = PositionSettings(),
     val animationSettings: AnimationSettings = AnimationSettings(),
@@ -447,6 +464,19 @@ class LifeDotsPreferences(context: Context) {
             position = GoalPosition.valueOf(prefs.getString(KEY_GOALS_POSITION, GoalPosition.BOTTOM.name) ?: GoalPosition.BOTTOM.name)
         )
 
+        // Umr Events (separate from Goal — events can be past or future)
+        val eventsJson = prefs.getString(KEY_EVENTS_JSON, "[]") ?: "[]"
+        val eventsType = object : TypeToken<List<Event>>() {}.type
+        val events: List<Event> = try {
+            gson.fromJson(eventsJson, eventsType) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val eventSettings = EventSettings(
+            enabled = prefs.getBoolean(KEY_EVENTS_ENABLED, true),
+            events = events,
+        )
+
         // Position Settings
         val positionSettings = PositionSettings(
             horizontalOffset = prefs.getFloat(KEY_HORIZONTAL_OFFSET, 0f),
@@ -507,6 +537,7 @@ class LifeDotsPreferences(context: Context) {
             calendarViewSettings = calendarViewSettings,
             backgroundSettings = backgroundSettings,
             goalSettings = goalSettings,
+            eventSettings = eventSettings,
             positionSettings = positionSettings,
             animationSettings = animationSettings,
             glassEffectSettings = glassEffectSettings,
@@ -765,6 +796,43 @@ class LifeDotsPreferences(context: Context) {
         prefs.edit().putString(KEY_GOALS_JSON, goalsJson).apply()
         val newGoalSettings = _settingsFlow.value.goalSettings.copy(goals = goals)
         _settingsFlow.value = _settingsFlow.value.copy(goalSettings = newGoalSettings)
+        notifyWallpaperChanged()
+    }
+
+    // ===== Umr Event setters (parallel to Goal setters above) =====
+    fun setEventsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_EVENTS_ENABLED, enabled).apply()
+        val newEvents = _settingsFlow.value.eventSettings.copy(enabled = enabled)
+        _settingsFlow.value = _settingsFlow.value.copy(eventSettings = newEvents)
+        notifyWallpaperChanged()
+    }
+
+    fun addEvent(event: Event) {
+        val list = _settingsFlow.value.eventSettings.events.toMutableList()
+        list.add(event)
+        saveEvents(list)
+    }
+
+    fun updateEvent(event: Event) {
+        val list = _settingsFlow.value.eventSettings.events.toMutableList()
+        val index = list.indexOfFirst { it.id == event.id }
+        if (index >= 0) {
+            list[index] = event
+            saveEvents(list)
+        }
+    }
+
+    fun deleteEvent(eventId: String) {
+        val list = _settingsFlow.value.eventSettings.events.toMutableList()
+        list.removeAll { it.id == eventId }
+        saveEvents(list)
+    }
+
+    private fun saveEvents(events: List<Event>) {
+        val json = gson.toJson(events)
+        prefs.edit().putString(KEY_EVENTS_JSON, json).apply()
+        val newEventSettings = _settingsFlow.value.eventSettings.copy(events = events)
+        _settingsFlow.value = _settingsFlow.value.copy(eventSettings = newEventSettings)
         notifyWallpaperChanged()
     }
 
@@ -1141,6 +1209,10 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_GOALS_ENABLED = "goals_enabled"
         private const val KEY_GOALS_JSON = "goals_json"
         private const val KEY_GOALS_POSITION = "goals_position"
+
+        // Umr Event Tracking keys (separate from goals — events can be past or future)
+        private const val KEY_EVENTS_ENABLED = "umr_events_enabled"
+        private const val KEY_EVENTS_JSON = "umr_events_json"
 
         // Position Settings keys
         private const val KEY_HORIZONTAL_OFFSET = "horizontal_offset"

@@ -103,8 +103,10 @@ import com.example.lifedots.preferences.DotSize
 import com.example.lifedots.preferences.DotStyle
 import com.example.lifedots.preferences.FluidStyle
 import com.example.lifedots.preferences.GlassStyle
+import com.example.lifedots.preferences.Event
 import com.example.lifedots.preferences.Goal
 import com.example.lifedots.preferences.GoalPosition
+import com.example.lifedots.ui.components.EventEditorDialog
 import com.example.lifedots.preferences.GridDensity
 import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.preferences.TextAlignment
@@ -186,6 +188,8 @@ fun SettingsScreen(
     var showFooterColorPicker by remember { mutableStateOf(false) }
     var showGoalEditor by remember { mutableStateOf(false) }
     var editingGoal by remember { mutableStateOf<Goal?>(null) }
+    var showEventEditor by remember { mutableStateOf(false) }
+    var editingEvent by remember { mutableStateOf<Event?>(null) }
     var showGlassTintPicker by remember { mutableStateOf(false) }
     var showTreeTrunkColorPicker by remember { mutableStateOf(false) }
     var showTreeLeafColorPicker by remember { mutableStateOf(false) }
@@ -240,8 +244,28 @@ fun SettingsScreen(
         scope = scope,
         onAddGoal = { editingGoal = null; showGoalEditor = true },
         onEditGoal = { goal -> editingGoal = goal; showGoalEditor = true },
+        onAddEvent = { editingEvent = null; showEventEditor = true },
+        onEditEvent = { event -> editingEvent = event; showEventEditor = true },
         modifier = modifier,
     )
+
+    if (showEventEditor) {
+        EventEditorDialog(
+            event = editingEvent,
+            onSave = { event ->
+                if (editingEvent != null) {
+                    preferences.updateEvent(event)
+                } else {
+                    preferences.addEvent(event)
+                }
+            },
+            onDelete = editingEvent?.let { { preferences.deleteEvent(it.id) } },
+            onDismiss = {
+                showEventEditor = false
+                editingEvent = null
+            },
+        )
+    }
 
     if (showGoalEditor) {
         GoalEditorDialog(
@@ -293,6 +317,8 @@ internal fun ModernSettingsContent(
     scope: CoroutineScope,
     onAddGoal: () -> Unit,
     onEditGoal: (Goal) -> Unit,
+    onAddEvent: () -> Unit,
+    onEditEvent: (Event) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
@@ -540,14 +566,14 @@ internal fun ModernSettingsContent(
             }
         }
 
-        if (settings.topViewMode == TopViewMode.UMR) {
+        if (settings.topViewMode == TopViewMode.YIL) {
             item {
-                ModernSectionTitle("EVENTS")
+                ModernSectionTitle("GOAL COUNTDOWN")
                 ModernPanelCard {
                     ModernSettingRow(
                         icon = SettingIcon.Target,
-                        title = "Enable Events",
-                        subtitle = "Mark important dates on your life calendar",
+                        title = "Enable Goals",
+                        subtitle = "Countdown to important future dates",
                         trailing = {
                             ModernSwitch(
                                 checked = settings.goalSettings.enabled,
@@ -556,13 +582,40 @@ internal fun ModernSettingsContent(
                         },
                     )
                     Spacer(modifier = Modifier.height(18.dp))
-                    ModernPrimaryButton(text = "+  Add Event", onClick = onAddGoal)
+                    ModernPrimaryButton(text = "+  Add Goal", onClick = onAddGoal)
                 }
             }
 
             if (settings.goalSettings.goals.isNotEmpty()) {
                 items(settings.goalSettings.goals, key = { it.id }) { goal ->
                     ModernGoalItem(goal = goal, onClick = { onEditGoal(goal) })
+                }
+            }
+        }
+
+        if (settings.topViewMode == TopViewMode.UMR) {
+            item {
+                ModernSectionTitle("EVENTS")
+                ModernPanelCard {
+                    ModernSettingRow(
+                        icon = SettingIcon.Target,
+                        title = "Enable Events",
+                        subtitle = "Mark important dates (past or future) on your life calendar",
+                        trailing = {
+                            ModernSwitch(
+                                checked = settings.eventSettings.enabled,
+                                onCheckedChange = { preferences.setEventsEnabled(it) },
+                            )
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    ModernPrimaryButton(text = "+  Add Event", onClick = onAddEvent)
+                }
+            }
+
+            if (settings.eventSettings.events.isNotEmpty()) {
+                items(settings.eventSettings.events, key = { it.id }) { event ->
+                    ModernEventItem(event = event, onClick = { onEditEvent(event) })
                 }
             }
         }
@@ -1409,6 +1462,34 @@ private fun ModernGoalItem(
     goal: Goal,
     onClick: () -> Unit,
 ) {
+    ModernDatedRow(
+        color = goal.color,
+        title = goal.title,
+        epochMs = goal.targetDate,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ModernEventItem(
+    event: Event,
+    onClick: () -> Unit,
+) {
+    ModernDatedRow(
+        color = event.color,
+        title = event.title,
+        epochMs = event.targetDate,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ModernDatedRow(
+    color: Int,
+    title: String,
+    epochMs: Long,
+    onClick: () -> Unit,
+) {
     val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
     ModernPanelCard {
         Row(
@@ -1423,19 +1504,19 @@ private fun ModernGoalItem(
                 modifier = Modifier
                     .size(18.dp)
                     .clip(CircleShape)
-                    .background(Color(goal.color))
+                    .background(Color(color))
                     .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
             )
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = goal.title,
+                    text = title,
                     color = Color.White,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = dateFormatter.format(Date(goal.targetDate)),
+                    text = dateFormatter.format(Date(epochMs)),
                     color = ModernTextMuted,
                     fontSize = 14.sp,
                 )

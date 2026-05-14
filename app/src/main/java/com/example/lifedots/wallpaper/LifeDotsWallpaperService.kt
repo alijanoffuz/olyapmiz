@@ -426,7 +426,14 @@ class LifeDotsWallpaperService : WallpaperService() {
                 canvas.restore()
             }
 
-            // Goal-countdown bottom rendering removed — events are Umr-only now.
+            // Yil goal countdown (bottom only — position picker removed).
+            // Events live exclusively in the Umr view path; this is the Yil-side
+            // goal countdown the user expects in Yil mode.
+            if (!isCalendarModeEarly && settings.goalSettings.enabled &&
+                currentEffectiveMode(nowMs, settings) == TopViewMode.YIL) {
+                val goalY = canvas.height - bottomOffset + 20f
+                drawGoals(canvas, settings.goalSettings, colors, goalY, canvas.width.toFloat())
+            }
 
             // Feature 2: Draw footer text if enabled
             if (settings.footerTextSettings.enabled) {
@@ -444,6 +451,9 @@ class LifeDotsWallpaperService : WallpaperService() {
             var offset = height * 0.06f
             if (settings.footerTextSettings.enabled && settings.footerTextSettings.text.isNotEmpty()) {
                 offset += 60f
+            }
+            if (settings.goalSettings.enabled) {
+                offset += 80f + (settings.goalSettings.goals.size * 30f)
             }
             return offset
         }
@@ -1068,7 +1078,63 @@ class LifeDotsWallpaperService : WallpaperService() {
                 }
             }
 
+            // Event markers — one filled/X marker per event at its target-week
+            // cell, in the event's chosen colour. Past events show on the grid
+            // too (history); future events also get a "weeks remaining" line
+            // under the grid (rendered below, before the optional footer).
+            val eventCellsAndColors = mutableListOf<Triple<Float, Float, Int>>()
+            if (settings.eventSettings.enabled && birthdayMs != 0L) {
+                for (event in settings.eventSettings.events) {
+                    val cell = weekIndexFor(birthdayMs, event.targetDate)
+                    if (cell < 0) continue
+                    val (cx, cy) = UmrLayoutCompute.cellCenter(layout, cell)
+                    umrFilledPaint.color = event.color
+                    umrFilledPaint.alpha = 255
+                    umrCrossPaint.color = event.color
+                    umrCrossPaint.alpha = 255
+                    umrCrossPaint.strokeWidth = layout.dotSizePx * 0.28f
+                    if (isX) {
+                        val s = parentR * 0.95f
+                        canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrCrossPaint)
+                        canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrCrossPaint)
+                    } else {
+                        canvas.drawCircle(cx, cy, parentR, umrFilledPaint)
+                    }
+                    eventCellsAndColors.add(Triple(cx, cy, event.color))
+                }
+            }
+
             canvas.restore()
+
+            // Future-event "weeks remaining" lines below the grid.
+            if (settings.eventSettings.enabled && settings.eventSettings.events.isNotEmpty()) {
+                val futureEvents = settings.eventSettings.events.filter { it.targetDate > now }
+                if (futureEvents.isNotEmpty()) {
+                    val lineHeight = layout.dotSizePx * 2.2f
+                    val gridBottom = layout.gridTopPx + layout.gridHeightPx
+                    val startY = gridBottom + lineHeight * 0.6f
+                    val textSize = lineHeight * 0.62f
+                    umrCounterTextPaint.textAlign = Paint.Align.LEFT
+                    umrCounterTextPaint.textSize = textSize
+                    val swatchRadius = textSize * 0.30f
+                    val leftPad = layout.gridLeftPx + textSize * 0.4f
+                    val swatchToText = textSize * 0.9f
+                    val weekMs = 7L * 24L * 60L * 60L * 1000L
+                    futureEvents.forEachIndexed { idx, event ->
+                        val y = startY + idx * lineHeight
+                        if (y > canvas.height - 32f) return@forEachIndexed
+                        val weeksLeft = ((event.targetDate - now) / weekMs).toInt().coerceAtLeast(0)
+                        umrCounterSwatchPaint.color = event.color
+                        umrCounterSwatchPaint.alpha = 255
+                        canvas.drawCircle(leftPad, y - textSize * 0.32f, swatchRadius, umrCounterSwatchPaint)
+                        umrCounterTextPaint.color = 0xFFEDE8DE.toInt()
+                        umrCounterTextPaint.alpha = 230
+                        val label = "${event.title} — $weeksLeft weeks"
+                        canvas.drawText(label, leftPad + swatchToText, y, umrCounterTextPaint)
+                    }
+                    umrCounterTextPaint.textAlign = Paint.Align.CENTER
+                }
+            }
 
             // Optional shared footer text (user's signature line), if enabled.
             if (settings.footerTextSettings.enabled) {

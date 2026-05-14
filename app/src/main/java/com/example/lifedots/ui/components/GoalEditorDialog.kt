@@ -72,8 +72,10 @@ fun GoalEditorDialog(
     goal: Goal? = null,
     onSave: (Goal) -> Unit,
     onDelete: (() -> Unit)? = null,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isEvent: Boolean = false,
 ) {
+    val itemLabel = if (isEvent) "Event" else "Goal"
     var title by remember { mutableStateOf(goal?.title ?: "") }
     val initialDate: LocalDate? = remember(goal) {
         goal?.targetDate?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate() }
@@ -153,7 +155,7 @@ fun GoalEditorDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = if (goal == null) "Add Event" else "Edit Event",
+                        text = if (goal == null) "Add $itemLabel" else "Edit $itemLabel",
                         color = DialogGold,
                         fontFamily = FontFamily.Serif,
                         fontSize = 31.sp,
@@ -168,6 +170,8 @@ fun GoalEditorDialog(
                 GoalParchmentInput(
                     title = title,
                     onTitleChange = { title = it },
+                    labelText = "$itemLabel Title",
+                    placeholderText = "Enter ${itemLabel.lowercase()} title...",
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -222,7 +226,7 @@ fun GoalEditorDialog(
                         modifier = Modifier.weight(1f),
                     )
                     DialogSaveButton(
-                        text = "Save Event",
+                        text = "Save $itemLabel",
                         enabled = title.isNotBlank() && resolvedDate != null,
                         onClick = {
                             val date = resolvedDate
@@ -278,6 +282,8 @@ private fun DialogCloseButton(onClick: () -> Unit) {
 private fun GoalParchmentInput(
     title: String,
     onTitleChange: (String) -> Unit,
+    labelText: String = "Event Title",
+    placeholderText: String = "Enter event title...",
 ) {
     Box(
         modifier = Modifier
@@ -309,7 +315,7 @@ private fun GoalParchmentInput(
         }
         Column(modifier = Modifier.align(Alignment.CenterStart)) {
             Text(
-                text = "Event Title",
+                text = labelText,
                 color = PaperInk,
                 fontFamily = FontFamily.Serif,
                 fontSize = 18.sp,
@@ -319,7 +325,7 @@ private fun GoalParchmentInput(
             Box {
                 if (title.isBlank()) {
                     Text(
-                        text = "Enter event title...",
+                        text = placeholderText,
                         color = PaperInk.copy(alpha = 0.58f),
                         fontFamily = FontFamily.Serif,
                         fontStyle = FontStyle.Italic,
