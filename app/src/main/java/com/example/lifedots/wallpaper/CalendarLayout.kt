@@ -115,15 +115,22 @@ data class CalendarLayout(
                 systemSafeInsetTopPx.toFloat()
             )
 
-            // Vertical safe-bottom band — under-display fingerprint hint
-            // zone on the S21+, nav-handle on most newer Samsung phones.
-            // The bottommost stats line baselines here.
-            val safeBottomPx = maxOf(
-                height * 0.06f,
-                bottomOffsetPx,
-                systemSafeInsetBottomPx.toFloat()
+            // Bottom stats are part of the Calendar composition, not part of
+            // the user-movable grid. Keep them screen-anchored and low, with
+            // only a small device-derived inset for nav handles / rounded
+            // display corners. Do not reserve the floating bottom goal/footer
+            // offset here; Calendar mode renders goals as countdown lines in
+            // this stats stack, so using bottomOffsetPx would incorrectly push
+            // the whole stats block upward.
+            val statsBottomInsetPx = maxOf(
+                height * when {
+                    aspect > 2.1f -> 0.045f
+                    aspect > 2.0f -> 0.048f
+                    else -> 0.055f
+                },
+                systemSafeInsetBottomPx.toFloat() * 0.6f
             )
-            val statsBottomBaselinePx = height - safeBottomPx * 0.55f
+            val statsBottomBaselinePx = height - statsBottomInsetPx
 
             // Gap between adjacent dots in a month grid, expressed as a
             // multiplier on dotSize. Smaller phones need a tighter gap

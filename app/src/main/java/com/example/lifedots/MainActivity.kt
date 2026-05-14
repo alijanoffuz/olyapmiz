@@ -16,25 +16,28 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,7 +45,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,14 +56,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -71,6 +83,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.example.lifedots.preferences.LifeDotsPreferences
 import com.example.lifedots.ui.components.rememberUxFeedback
 import com.example.lifedots.ui.theme.BrandColors
@@ -82,7 +95,9 @@ import com.example.lifedots.updater.UpdateNotifier
 import com.example.lifedots.wallpaper.LifeDotsWallpaperService
 import kotlinx.coroutines.launch
 import java.io.File
-import java.util.Calendar
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,33 +111,32 @@ class MainActivity : ComponentActivity() {
         // we don't accumulate them on disk.
         UpdateInstaller(this).cleanCache()
         enableEdgeToEdge()
-        // Yellow status bar with dark icons to match the amber-gold background.
+        // The reference home screen is full-bleed with no visible system chrome.
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+            hide(WindowInsetsCompat.Type.systemBars())
         }
         @Suppress("DEPRECATION")
-        window.statusBarColor = android.graphics.Color.parseColor("#FFB300")
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = android.graphics.Color.BLACK
         setContent {
             LifeDotsTheme {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    containerColor = BrandColors.AmberGold,
-                ) { innerPadding ->
-                    val installer = remember { UpdateInstaller(this) }
-                    OnboardingScreen(
-                        onSetWallpaper = { openWallpaperPicker() },
-                        onOpenSettings = { openSettings() },
-                        onAllowBackground = { requestIgnoreBatteryOptimizations() },
-                        onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
-                        onInstallApk = { apk -> installer.launchInstaller(this, apk) },
-                        onLaunchSelfUninstall = { installer.launchSelfUninstall(this) },
-                        autoCheckOnLaunch = true,
-                        triggerFromNotification = intent?.getBooleanExtra(
-                            UpdateNotifier.EXTRA_FROM_UPDATE_NOTIFICATION, false
-                        ) ?: false,
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                val installer = remember { UpdateInstaller(this) }
+                OnboardingScreen(
+                    onSetWallpaper = { openWallpaperPicker() },
+                    onOpenSettings = { openSettings() },
+                    onAllowBackground = { requestIgnoreBatteryOptimizations() },
+                    onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
+                    onInstallApk = { apk -> installer.launchInstaller(this, apk) },
+                    onLaunchSelfUninstall = { installer.launchSelfUninstall(this) },
+                    autoCheckOnLaunch = true,
+                    triggerFromNotification = intent?.getBooleanExtra(
+                        UpdateNotifier.EXTRA_FROM_UPDATE_NOTIFICATION, false
+                    ) ?: false,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }
@@ -259,28 +273,9 @@ fun OnboardingScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val dayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
-    val totalDays = remember { Calendar.getInstance().getActualMaximum(Calendar.DAY_OF_YEAR) }
-
-    var batteryOptimized by remember { mutableStateOf(isBatteryOptimized(context)) }
-    var notificationsAllowed by remember { mutableStateOf(hasPostNotificationsPermission(context)) }
     var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
     var pendingInstallApk by remember { mutableStateOf<File?>(null) }
     var pendingInstallInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        notificationsAllowed = granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-    }
-
-    fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            notificationsAllowed = true
-        }
-    }
 
     fun handleInstall(apk: File) {
         val info = when (val state = updateState) {
@@ -314,8 +309,6 @@ fun OnboardingScreen(
     DisposableEffect(lifecycleOwner, pendingInstallApk) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                batteryOptimized = isBatteryOptimized(context)
-                notificationsAllowed = hasPostNotificationsPermission(context)
                 val apk = pendingInstallApk
                 if (apk != null && context.packageManager.canRequestPackageInstalls()) {
                     handleInstall(apk)
@@ -325,7 +318,6 @@ fun OnboardingScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val isSamsung = remember { Build.MANUFACTURER.equals("samsung", ignoreCase = true) }
 
     fun checkForUpdate(silent: Boolean) {
         if (updateState is UpdateUiState.Checking || updateState is UpdateUiState.Downloading) return
@@ -381,174 +373,551 @@ fun OnboardingScreen(
     val settings by preferences.settingsFlow.collectAsState()
     val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
 
-    Column(
+    val updateButtonText = when (val state = updateState) {
+        is UpdateUiState.Checking -> "Checking"
+        is UpdateUiState.Downloading -> "Downloading"
+        is UpdateUiState.Available -> "Download v${state.info.versionName}"
+        is UpdateUiState.Ready -> "Install Update"
+        is UpdateUiState.InstallPermissionRequired -> "Allow Install"
+        is UpdateUiState.SignatureMismatch -> "Uninstall Old App"
+        is UpdateUiState.UpToDate -> "Up to Date"
+        is UpdateUiState.Error -> "Try Again"
+        else -> "Update"
+    }
+
+    fun handleUpdateButton() {
+        feedback.click()
+        when (val state = updateState) {
+            is UpdateUiState.Available -> startDownload(state.info)
+            is UpdateUiState.Ready -> handleInstall(state.apk)
+            is UpdateUiState.InstallPermissionRequired -> handleInstall(state.apk)
+            is UpdateUiState.SignatureMismatch -> onLaunchSelfUninstall()
+            else -> checkForUpdate(silent = false)
+        }
+    }
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(Color(0xFF030302))
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-        // App logo — point at the bitmap drawable directly, NOT @mipmap/ic_launcher.
-        // On API 26+ ic_launcher resolves to <adaptive-icon> XML which Compose's
-        // painterResource cannot load, throwing IllegalArgumentException.
+        val screenWidth = maxWidth
+        val screenHeight = maxHeight
+        val gold = Color(0xFFC5A266)
+
         Image(
-            painter = painterResource(id = R.drawable.ic_launcher_logo),
-            contentDescription = stringResource(R.string.app_name),
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(180.dp)
+            painter = painterResource(id = R.drawable.home_bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Title
-        Text(
-            text = stringResource(R.string.onboarding_title),
-            fontSize = 36.sp,
-            fontWeight = FontWeight.Bold,
-            color = BrandColors.InkBlack
+        PaintingHomeScrim(
+            modifier = Modifier.matchParentSize()
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Subtitle
-        Text(
-            text = stringResource(R.string.onboarding_subtitle),
-            fontSize = 18.sp,
-            color = BrandColors.DarkAmber
+        TitleMark(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset(y = screenHeight * 0.555f),
+            gold = gold
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Column(
+            modifier = Modifier
+                .offset(x = screenWidth * 0.09f, y = screenHeight * 0.665f)
+                .width(screenWidth * 0.82f)
+                .height(screenHeight * 0.205f),
+            verticalArrangement = Arrangement.spacedBy(screenHeight * 0.014f)
+        ) {
+            HomeActionButton(
+                label = "Set as Wallpaper",
+                icon = HomeIcon.Picture,
+                onClick = {
+                    feedback.click()
+                    onSetWallpaper()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                gold = gold,
+                large = true
+            )
+            HomeActionButton(
+                label = "Customize",
+                icon = HomeIcon.Palette,
+                onClick = {
+                    feedback.click()
+                    onOpenSettings()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                gold = gold,
+                large = true
+            )
+            HomeActionButton(
+                label = updateButtonText,
+                icon = HomeIcon.Download,
+                onClick = { handleUpdateButton() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                gold = gold,
+                large = true,
+                enabled = updateState !is UpdateUiState.Checking &&
+                    updateState !is UpdateUiState.Downloading
+            )
+        }
+    }
+}
 
-        // Description
+private enum class HomeIcon {
+    Menu,
+    Settings,
+    Picture,
+    Palette,
+    Download
+}
+
+@Composable
+private fun PaintingHomeScrim(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        drawRect(
+            brush = Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.00f to Color.Black.copy(alpha = 0.02f),
+                    0.42f to Color.Transparent,
+                    0.76f to Color.Black.copy(alpha = 0.04f),
+                    1.00f to Color.Black.copy(alpha = 0.10f)
+                ),
+                startY = 0f,
+                endY = size.height
+            )
+        )
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Black.copy(alpha = 0.10f),
+                    Color.Transparent,
+                    Color.Transparent,
+                    Color.Black.copy(alpha = 0.12f)
+                ),
+                startX = 0f,
+                endX = size.width
+            )
+        )
+        drawRect(Color.Black.copy(alpha = 0.01f))
+    }
+}
+
+@Composable
+private fun RoundHomeButton(
+    icon: HomeIcon,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    gold: Color
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color(0xB0050403))
+            .border(BorderStroke(1.dp, gold.copy(alpha = 0.42f)), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(34.dp)) {
+            drawHomeIcon(icon, gold, 4.dp.toPx())
+        }
+    }
+}
+
+@Composable
+private fun TitleMark(
+    modifier: Modifier = Modifier,
+    gold: Color
+) {
+    Box(
+        modifier = modifier.height(128.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
         Text(
-            text = stringResource(R.string.onboarding_description),
-            fontSize = 16.sp,
-            color = BrandColors.DarkAmber,
+            text = "O’lyapmiz",
+            modifier = Modifier.fillMaxWidth(),
+            color = gold,
             textAlign = TextAlign.Center,
-            lineHeight = 24.sp
+            fontFamily = FontFamily.Serif,
+            fontSize = 36.sp,
+            lineHeight = 42.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Clip
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Days counter
-        Text(
-            text = stringResource(R.string.days_passed, dayOfYear),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = BrandColors.InkBlack
-        )
-        Text(
-            text = stringResource(R.string.days_remaining, totalDays - dayOfYear),
-            fontSize = 14.sp,
-            color = BrandColors.DarkAmber
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // "Keep Always Running" stays visible until the OS-level permissions
-        // needed by the foreground keep-alive/update notifications are granted.
-        if (batteryOptimized || !notificationsAllowed) {
-            KeepAlwaysRunningCard(
-                showBatteryButton = batteryOptimized,
-                showNotificationButton = !notificationsAllowed,
-                showSamsungButton = isSamsung,
-                onAllowBackground = onAllowBackground,
-                onAllowNotifications = { requestNotificationPermission() },
-                onOpenSamsungNeverSleeping = onOpenSamsungNeverSleeping
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        // Update card — only renders for non-Idle states so the home screen
-        // stays clean when there's nothing to say.
-        UpdateCard(
-            state = updateState,
-            onDownload = { info -> startDownload(info) },
-            onInstall = { apk -> handleInstall(apk) },
-            onLaunchSelfUninstall = onLaunchSelfUninstall,
-            onDismiss = { updateState = UpdateUiState.Idle }
-        )
-        if (updateState !is UpdateUiState.Idle) {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        // Buttons
-        Button(
-            onClick = {
-                feedback.click()
-                onSetWallpaper()
-            },
+        GoldOrnament(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = BrandColors.InkBlack,
-                contentColor = BrandColors.AmberGold,
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 4.dp,
-                pressedElevation = 8.dp,
-            ),
+                .align(Alignment.TopCenter)
+                .offset(y = 59.dp)
+                .size(width = 158.dp, height = 15.dp),
+            gold = gold
+        )
+    }
+}
+
+@Composable
+private fun GoldOrnament(
+    modifier: Modifier = Modifier,
+    gold: Color
+) {
+    Canvas(modifier = modifier) {
+        val centerY = size.height / 2f
+        val centerX = size.width / 2f
+        val lineInset = size.width * 0.14f
+        drawLine(
+            color = gold.copy(alpha = 0.82f),
+            start = Offset(0f, centerY),
+            end = Offset(centerX - lineInset, centerY),
+            strokeWidth = 1.3.dp.toPx()
+        )
+        drawLine(
+            color = gold.copy(alpha = 0.82f),
+            start = Offset(centerX + lineInset, centerY),
+            end = Offset(size.width, centerY),
+            strokeWidth = 1.3.dp.toPx()
+        )
+        val diamond = Path().apply {
+            moveTo(centerX, centerY - size.height * 0.35f)
+            lineTo(centerX + size.height * 0.32f, centerY)
+            lineTo(centerX, centerY + size.height * 0.35f)
+            lineTo(centerX - size.height * 0.32f, centerY)
+            close()
+        }
+        drawPath(diamond, gold.copy(alpha = 0.84f), style = Stroke(width = 1.1.dp.toPx()))
+        drawCircle(gold.copy(alpha = 0.84f), radius = 2.dp.toPx(), center = Offset(centerX - size.height * 0.44f, centerY))
+        drawCircle(gold.copy(alpha = 0.84f), radius = 2.dp.toPx(), center = Offset(centerX + size.height * 0.44f, centerY))
+        drawLine(
+            color = gold.copy(alpha = 0.84f),
+            start = Offset(centerX - size.height * 0.95f, centerY - size.height * 0.26f),
+            end = Offset(centerX + size.height * 0.95f, centerY + size.height * 0.26f),
+            strokeWidth = 1.dp.toPx()
+        )
+        drawLine(
+            color = gold.copy(alpha = 0.84f),
+            start = Offset(centerX - size.height * 0.95f, centerY + size.height * 0.26f),
+            end = Offset(centerX + size.height * 0.95f, centerY - size.height * 0.26f),
+            strokeWidth = 1.dp.toPx()
+        )
+    }
+}
+
+@Composable
+private fun FocusParchmentCard(modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFE4D8BC),
+                        Color(0xFFC8B58E),
+                        Color(0xFFE0D0A9)
+                    )
+                )
+            )
+            .border(BorderStroke(1.dp, Color(0x885E4524)), shape)
+    ) {
+        ParchmentTexture(modifier = Modifier.matchParentSize())
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 22.dp, top = 12.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = stringResource(R.string.set_wallpaper),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
+                text = "Today’s Focus",
+                color = Color(0xFF17120A),
+                fontFamily = FontFamily.Serif,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Become better\nthan yesterday.",
+                color = Color(0xFF0C0905),
+                fontFamily = FontFamily.Serif,
+                fontSize = 20.sp,
+                lineHeight = 25.sp,
+                fontWeight = FontWeight.Bold
             )
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = {
-                feedback.click()
-                onOpenSettings()
-            },
+        DeskClockSketch(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(2.dp, BrandColors.InkBlack),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = BrandColors.InkBlack,
-            ),
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp)
+                .size(112.dp),
+            ink = Color(0xFF1A130B)
+        )
+    }
+}
+
+@Composable
+private fun ParchmentTexture(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        repeat(42) { index ->
+            val x = ((index * 37) % 100) / 100f * size.width
+            val y = ((index * 61) % 100) / 100f * size.height
+            drawCircle(
+                color = Color.White.copy(alpha = if (index % 2 == 0) 0.10f else 0.06f),
+                radius = (3 + index % 8).dp.toPx(),
+                center = Offset(x, y)
+            )
+        }
+        repeat(14) { index ->
+            val start = Offset(
+                ((index * 53) % 100) / 100f * size.width,
+                ((index * 29) % 100) / 100f * size.height
+            )
+            drawLine(
+                color = Color(0xFF4C321A).copy(alpha = 0.12f),
+                start = start,
+                end = start + Offset(((index % 5) - 2) * 18.dp.toPx(), (8 + index % 9).dp.toPx()),
+                strokeWidth = 0.7.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeskClockSketch(
+    modifier: Modifier = Modifier,
+    ink: Color
+) {
+    Canvas(modifier = modifier) {
+        val stroke = 2.dp.toPx()
+        val clockCenter = Offset(size.width * 0.66f, size.height * 0.42f)
+        val clockRadius = size.minDimension * 0.25f
+        val paper = Path().apply {
+            moveTo(size.width * 0.18f, size.height * 0.52f)
+            lineTo(size.width * 0.86f, size.height * 0.42f)
+            lineTo(size.width * 0.92f, size.height * 0.76f)
+            lineTo(size.width * 0.28f, size.height * 0.84f)
+            close()
+        }
+        drawPath(paper, ink.copy(alpha = 0.16f))
+        drawPath(paper, ink.copy(alpha = 0.42f), style = Stroke(width = 1.dp.toPx()))
+        drawRoundRect(
+            color = ink.copy(alpha = 0.20f),
+            topLeft = Offset(size.width * 0.09f, size.height * 0.42f),
+            size = Size(size.width * 0.26f, size.height * 0.18f),
+            cornerRadius = CornerRadius(11.dp.toPx(), 11.dp.toPx()),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        drawCircle(ink.copy(alpha = 0.86f), radius = clockRadius, center = clockCenter, style = Stroke(width = stroke))
+        drawCircle(ink.copy(alpha = 0.60f), radius = clockRadius * 0.76f, center = clockCenter, style = Stroke(width = 1.dp.toPx()))
+        for (i in 0 until 12) {
+            val angle = (i * 30f - 90f) * PI.toFloat() / 180f
+            val outer = Offset(
+                clockCenter.x + cos(angle) * clockRadius * 0.88f,
+                clockCenter.y + sin(angle) * clockRadius * 0.88f
+            )
+            val inner = Offset(
+                clockCenter.x + cos(angle) * clockRadius * 0.72f,
+                clockCenter.y + sin(angle) * clockRadius * 0.72f
+            )
+            drawLine(ink.copy(alpha = 0.58f), inner, outer, strokeWidth = 1.dp.toPx())
+        }
+        drawLine(ink, clockCenter, clockCenter + Offset(0f, -clockRadius * 0.52f), strokeWidth = 1.6.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(ink, clockCenter, clockCenter + Offset(clockRadius * 0.40f, clockRadius * 0.25f), strokeWidth = 1.6.dp.toPx(), cap = StrokeCap.Round)
+        drawCircle(ink, radius = 2.dp.toPx(), center = clockCenter)
+        drawCircle(ink.copy(alpha = 0.76f), radius = clockRadius * 0.22f, center = clockCenter + Offset(0f, -clockRadius * 1.12f), style = Stroke(width = 2.dp.toPx()))
+        drawLine(
+            ink.copy(alpha = 0.56f),
+            Offset(size.width * 0.22f, size.height * 0.69f),
+            Offset(size.width * 0.86f, size.height * 0.65f),
+            strokeWidth = 1.dp.toPx()
+        )
+    }
+}
+
+@Composable
+private fun QuoteCard(
+    modifier: Modifier = Modifier,
+    gold: Color
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(Color(0xC9070604))
+            .border(BorderStroke(1.dp, gold.copy(alpha = 0.34f)), shape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "“",
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-12).dp),
+            color = gold.copy(alpha = 0.22f),
+            fontFamily = FontFamily.Serif,
+            fontSize = 64.sp,
+            lineHeight = 64.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(top = 10.dp)
         ) {
             Text(
-                text = stringResource(R.string.open_settings),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
+                text = "We are our choices.",
+                color = gold,
+                fontFamily = FontFamily.Serif,
+                fontStyle = FontStyle.Italic,
+                fontSize = 20.sp,
+                lineHeight = 25.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "— J.P. Sartre",
+                color = gold.copy(alpha = 0.90f),
+                fontFamily = FontFamily.Serif,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            GoldOrnament(
+                modifier = Modifier.size(width = 106.dp, height = 12.dp),
+                gold = gold
             )
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // "Check for updates" — visible on the first screen as a proper button
-        // (was a text button at the bottom, which kept falling below the fold
-        // on small phones like Samsung A11).
-        OutlinedButton(
-            onClick = {
-                feedback.click()
-                checkForUpdate(silent = false)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(2.dp, BrandColors.InkBlack),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = BrandColors.InkBlack,
-            ),
-            enabled = updateState !is UpdateUiState.Checking &&
-                      updateState !is UpdateUiState.Downloading
+@Composable
+private fun HomeActionButton(
+    label: String,
+    icon: HomeIcon,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    gold: Color,
+    large: Boolean = false,
+    enabled: Boolean = true
+) {
+    val shape = RoundedCornerShape(13.dp)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(shape)
+            .background(Color(0xC20A0906))
+            .border(BorderStroke(1.dp, gold.copy(alpha = 0.42f)), shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            val label = when (updateState) {
-                is UpdateUiState.Checking -> "Checking…"
-                is UpdateUiState.Downloading -> "Downloading…"
-                else -> "Check for updates"
+            Canvas(modifier = Modifier.size(if (large) 34.dp else 24.dp)) {
+                drawHomeIcon(
+                    icon = icon,
+                    color = gold.copy(alpha = if (enabled) 0.92f else 0.48f),
+                    strokeWidth = if (large) 2.3.dp.toPx() else 1.8.dp.toPx()
+                )
             }
-            Text(text = label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.width(if (large) 16.dp else 5.dp))
+            Text(
+                text = label,
+                color = gold.copy(alpha = if (enabled) 0.96f else 0.52f),
+                fontFamily = FontFamily.Serif,
+                fontSize = if (large) 20.sp else 10.5.sp,
+                lineHeight = if (large) 24.sp else 15.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = if (large) 1 else 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHomeIcon(
+    icon: HomeIcon,
+    color: Color,
+    strokeWidth: Float
+) {
+    val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+    when (icon) {
+        HomeIcon.Menu -> {
+            val startX = size.width * 0.18f
+            val endX = size.width * 0.82f
+            listOf(0.32f, 0.50f, 0.68f).forEach { y ->
+                drawLine(color, Offset(startX, size.height * y), Offset(endX, size.height * y), strokeWidth, StrokeCap.Round)
+            }
+        }
+        HomeIcon.Settings -> {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val outer = size.minDimension * 0.34f
+            val inner = size.minDimension * 0.18f
+            for (i in 0 until 8) {
+                val angle = i * PI.toFloat() / 4f
+                val start = Offset(center.x + cos(angle) * outer * 0.78f, center.y + sin(angle) * outer * 0.78f)
+                val end = Offset(center.x + cos(angle) * outer * 1.08f, center.y + sin(angle) * outer * 1.08f)
+                drawLine(color, start, end, strokeWidth * 0.95f, StrokeCap.Round)
+            }
+            drawCircle(color, radius = outer * 0.82f, center = center, style = Stroke(width = strokeWidth * 1.2f))
+            drawCircle(color, radius = inner, center = center, style = Stroke(width = strokeWidth * 1.1f))
+        }
+        HomeIcon.Picture -> {
+            val rectTopLeft = Offset(size.width * 0.18f, size.height * 0.20f)
+            val rectSize = Size(size.width * 0.64f, size.height * 0.62f)
+            drawRoundRect(color, rectTopLeft, rectSize, CornerRadius(2.dp.toPx(), 2.dp.toPx()), style = Stroke(width = strokeWidth))
+            val mountain = Path().apply {
+                moveTo(size.width * 0.24f, size.height * 0.74f)
+                lineTo(size.width * 0.42f, size.height * 0.54f)
+                lineTo(size.width * 0.53f, size.height * 0.65f)
+                lineTo(size.width * 0.63f, size.height * 0.50f)
+                lineTo(size.width * 0.78f, size.height * 0.73f)
+            }
+            drawPath(mountain, color, style = stroke)
+            drawCircle(color, radius = 2.5.dp.toPx(), center = Offset(size.width * 0.34f, size.height * 0.35f))
+        }
+        HomeIcon.Palette -> {
+            val outline = Path().apply {
+                moveTo(size.width * 0.46f, size.height * 0.14f)
+                cubicTo(size.width * 0.21f, size.height * 0.15f, size.width * 0.10f, size.height * 0.34f, size.width * 0.14f, size.height * 0.55f)
+                cubicTo(size.width * 0.19f, size.height * 0.83f, size.width * 0.53f, size.height * 0.92f, size.width * 0.75f, size.height * 0.75f)
+                cubicTo(size.width * 0.86f, size.height * 0.66f, size.width * 0.78f, size.height * 0.53f, size.width * 0.65f, size.height * 0.57f)
+                cubicTo(size.width * 0.52f, size.height * 0.61f, size.width * 0.49f, size.height * 0.48f, size.width * 0.62f, size.height * 0.38f)
+                cubicTo(size.width * 0.75f, size.height * 0.28f, size.width * 0.66f, size.height * 0.14f, size.width * 0.46f, size.height * 0.14f)
+                close()
+            }
+            drawPath(outline, color, style = stroke)
+            drawCircle(
+                color = color,
+                radius = size.minDimension * 0.12f,
+                center = Offset(size.width * 0.62f, size.height * 0.66f),
+                style = stroke
+            )
+            listOf(
+                Offset(size.width * 0.34f, size.height * 0.37f),
+                Offset(size.width * 0.48f, size.height * 0.29f),
+                Offset(size.width * 0.27f, size.height * 0.55f)
+            ).forEach {
+                drawCircle(color, radius = 2.6.dp.toPx(), center = it)
+            }
+        }
+        HomeIcon.Download -> {
+            val cloud = Path().apply {
+                moveTo(size.width * 0.21f, size.height * 0.60f)
+                cubicTo(size.width * 0.14f, size.height * 0.55f, size.width * 0.17f, size.height * 0.42f, size.width * 0.30f, size.height * 0.42f)
+                cubicTo(size.width * 0.33f, size.height * 0.26f, size.width * 0.56f, size.height * 0.23f, size.width * 0.64f, size.height * 0.39f)
+                cubicTo(size.width * 0.78f, size.height * 0.38f, size.width * 0.86f, size.height * 0.50f, size.width * 0.80f, size.height * 0.61f)
+            }
+            drawPath(cloud, color, style = stroke)
+            drawLine(color, Offset(size.width * 0.50f, size.height * 0.44f), Offset(size.width * 0.50f, size.height * 0.78f), strokeWidth, StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.38f, size.height * 0.66f), Offset(size.width * 0.50f, size.height * 0.79f), strokeWidth, StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.62f, size.height * 0.66f), Offset(size.width * 0.50f, size.height * 0.79f), strokeWidth, StrokeCap.Round)
         }
     }
 }

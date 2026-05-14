@@ -10,6 +10,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -17,9 +19,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,6 +64,7 @@ import com.example.lifedots.ui.components.PressableCard
 import com.example.lifedots.ui.components.rememberUxFeedback
 import com.example.lifedots.ui.theme.BrandColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,11 +74,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -105,7 +121,9 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 class SettingsActivity : ComponentActivity() {
 
@@ -205,726 +223,22 @@ fun SettingsScreen(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.settings_title),
-            style = MaterialTheme.typography.headlineMedium.copy(
-                color = BrandColors.AmberGold,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+    ModernSettingsContent(
+        settings = settings,
+        preferences = preferences,
+        snackbarHostState = snackbarHostState,
+        scope = scope,
+        onAddGoal = {
+            editingGoal = null
+            showGoalEditor = true
+        },
+        onEditGoal = { goal ->
+            editingGoal = goal
+            showGoalEditor = true
+        },
+        modifier = modifier,
+    )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ===== Mode top section: Yil/Umr pill, auto-switch, interval =====
-        ModeTopSection(
-            settings = settings,
-            preferences = preferences,
-            snackbarHostState = snackbarHostState,
-            scope = scope,
-        )
-
-        if (settings.topViewMode == TopViewMode.UMR) {
-            UmrSettingsSection(
-                settings = settings,
-                preferences = preferences,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // App Section (Sounds + Vibrations)
-        SettingsSection(title = "App") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Sounds",
-                        style = MaterialTheme.typography.bodyLarge.copy(color = BrandColors.OffWhite),
-                    )
-                    Text(
-                        text = "system click effects on tap",
-                        style = MaterialTheme.typography.bodySmall.copy(color = BrandColors.GoldenMuted),
-                    )
-                }
-                BrandSwitch(
-                    checked = settings.soundsEnabled,
-                    onCheckedChange = { preferences.setSoundsEnabled(it) },
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Vibrations",
-                        style = MaterialTheme.typography.bodyLarge.copy(color = BrandColors.OffWhite),
-                    )
-                    Text(
-                        text = "haptic feedback on tap",
-                        style = MaterialTheme.typography.bodySmall.copy(color = BrandColors.GoldenMuted),
-                    )
-                }
-                BrandSwitch(
-                    checked = settings.vibrationsEnabled,
-                    onCheckedChange = { preferences.setVibrationsEnabled(it) },
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Theme Section
-        SettingsSection(title = stringResource(R.string.theme_section)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ThemeOptionButton(
-                    label = stringResource(R.string.theme_light),
-                    backgroundColor = Color(0xFFF5F5F5),
-                    dotColor = Color(0xFF2C2C2C),
-                    isSelected = settings.theme == ThemeOption.LIGHT,
-                    onClick = { preferences.setTheme(ThemeOption.LIGHT) },
-                    modifier = Modifier.weight(1f)
-                )
-                ThemeOptionButton(
-                    label = stringResource(R.string.theme_dark),
-                    backgroundColor = Color(0xFF1A1A1A),
-                    dotColor = Color(0xFFE0E0E0),
-                    isSelected = settings.theme == ThemeOption.DARK,
-                    onClick = { preferences.setTheme(ThemeOption.DARK) },
-                    modifier = Modifier.weight(1f)
-                )
-                ThemeOptionButton(
-                    label = stringResource(R.string.theme_amoled),
-                    backgroundColor = Color(0xFF000000),
-                    dotColor = Color(0xFFFFFFFF),
-                    isSelected = settings.theme == ThemeOption.AMOLED,
-                    onClick = { preferences.setTheme(ThemeOption.AMOLED) },
-                    modifier = Modifier.weight(1f)
-                )
-                ThemeOptionButton(
-                    label = "Custom",
-                    backgroundColor = Color(settings.customColors.backgroundColor),
-                    dotColor = Color(settings.customColors.filledDotColor),
-                    isSelected = settings.theme == ThemeOption.CUSTOM,
-                    onClick = { preferences.setTheme(ThemeOption.CUSTOM) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        // Custom Colors Section (visible when Custom theme selected)
-        AnimatedVisibility(
-            visible = settings.theme == ThemeOption.CUSTOM,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            Column {
-                Spacer(modifier = Modifier.height(16.dp))
-                SettingsSection(title = "Custom Colors") {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ColorButton(
-                            color = settings.customColors.backgroundColor,
-                            label = "Background",
-                            onClick = { showBgColorPicker = true }
-                        )
-                        ColorButton(
-                            color = settings.customColors.filledDotColor,
-                            label = "Filled Dots",
-                            onClick = { showFilledColorPicker = true }
-                        )
-                        ColorButton(
-                            color = settings.customColors.emptyDotColor,
-                            label = "Empty Dots",
-                            onClick = { showEmptyColorPicker = true }
-                        )
-                        ColorButton(
-                            color = settings.customColors.todayDotColor,
-                            label = "Today's Dot",
-                            onClick = { showTodayColorPicker = true }
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Transparency Section
-        SettingsSection(title = "Transparency") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    // Filled dots alpha
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Filled Dots",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${(settings.filledDotAlpha * 100).roundToInt()}%",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Slider(
-                        value = settings.filledDotAlpha,
-                        onValueChange = { preferences.setFilledDotAlpha(it) },
-                        valueRange = 0.1f..1f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Empty dots alpha
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Empty Dots",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${(settings.emptyDotAlpha * 100).roundToInt()}%",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Slider(
-                        value = settings.emptyDotAlpha,
-                        onValueChange = { preferences.setEmptyDotAlpha(it) },
-                        valueRange = 0.1f..1f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                }
-            }
-        }
-
-        if (settings.topViewMode == TopViewMode.YIL) {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Highlight Today Toggle (Yil-only)
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.highlight_today),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = stringResource(R.string.highlight_today_desc),
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    BrandSwitch(
-                        checked = settings.highlightToday,
-                        onCheckedChange = { preferences.setHighlightToday(it) },
-                    )
-                }
-            }
-        }
-
-        if (settings.topViewMode == TopViewMode.YIL) {
-            Spacer(modifier = Modifier.height(24.dp))
-
-        // View Mode section (Yil-only)
-        SettingsSection(title = "View Mode") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ViewModeOption(
-                            label = "Year",
-                            mode = ViewMode.CALENDAR,
-                            isSelected = settings.viewModeSettings.mode == ViewMode.CALENDAR,
-                            onClick = { preferences.setViewMode(ViewMode.CALENDAR) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        ViewModeOption(
-                            label = "Monthly",
-                            mode = ViewMode.MONTHLY,
-                            isSelected = settings.viewModeSettings.mode == ViewMode.MONTHLY,
-                            onClick = { preferences.setViewMode(ViewMode.MONTHLY) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        ViewModeOption(
-                            label = "365",
-                            mode = ViewMode.CONTINUOUS,
-                            isSelected = settings.viewModeSettings.mode == ViewMode.CONTINUOUS,
-                            onClick = { preferences.setViewMode(ViewMode.CONTINUOUS) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = settings.viewModeSettings.mode == ViewMode.CALENDAR,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Calendar Columns",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                CalendarColumnsOption(
-                                    label = "2 x 6",
-                                    columns = 2,
-                                    isSelected = settings.calendarViewSettings.columnsPerRow == 2,
-                                    onClick = { preferences.setCalendarColumns(2) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                CalendarColumnsOption(
-                                    label = "3 x 4",
-                                    columns = 3,
-                                    isSelected = settings.calendarViewSettings.columnsPerRow == 3,
-                                    onClick = { preferences.setCalendarColumns(3) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Month Labels",
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                BrandSwitch(
-                                    checked = settings.viewModeSettings.showMonthLabels,
-                                    onCheckedChange = { preferences.setShowMonthLabels(it) },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        } // end if YIL (View Mode section)
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ===== Feature 2: Footer Text Section =====
-        SettingsSection(title = "Footer Text") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Enable Footer Text", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                        BrandSwitch(
-                            checked = settings.footerTextSettings.enabled,
-                            onCheckedChange = { preferences.setFooterEnabled(it) },
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = settings.footerTextSettings.enabled,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            OutlinedTextField(
-                                value = settings.footerTextSettings.text,
-                                onValueChange = { preferences.setFooterText(it) },
-                                label = { Text("Footer Text") },
-                                placeholder = { Text("e.g., Make every day count") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Font Size", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Text("${settings.footerTextSettings.fontSize.roundToInt()}sp", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                            }
-                            Slider(
-                                value = settings.footerTextSettings.fontSize,
-                                onValueChange = { preferences.setFooterFontSize(it) },
-                                valueRange = 10f..24f
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text("Alignment", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                TextAlignmentOption(
-                                    label = "Left",
-                                    alignment = TextAlignment.LEFT,
-                                    isSelected = settings.footerTextSettings.alignment == TextAlignment.LEFT,
-                                    onClick = { preferences.setFooterAlignment(TextAlignment.LEFT) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextAlignmentOption(
-                                    label = "Center",
-                                    alignment = TextAlignment.CENTER,
-                                    isSelected = settings.footerTextSettings.alignment == TextAlignment.CENTER,
-                                    onClick = { preferences.setFooterAlignment(TextAlignment.CENTER) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextAlignmentOption(
-                                    label = "Right",
-                                    alignment = TextAlignment.RIGHT,
-                                    isSelected = settings.footerTextSettings.alignment == TextAlignment.RIGHT,
-                                    onClick = { preferences.setFooterAlignment(TextAlignment.RIGHT) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Color", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(settings.footerTextSettings.color))
-                                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                        .clickable { showFooterColorPicker = true }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ===== Position & Scale Section =====
-        SettingsSection(title = "Position & Scale") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    // Horizontal Offset
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Horizontal Offset",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${settings.positionSettings.horizontalOffset.roundToInt()}%",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Slider(
-                        value = settings.positionSettings.horizontalOffset,
-                        onValueChange = { preferences.setHorizontalOffset(it) },
-                        valueRange = -50f..50f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Vertical Offset
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Vertical Offset",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${settings.positionSettings.verticalOffset.roundToInt()}%",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Slider(
-                        value = settings.positionSettings.verticalOffset,
-                        onValueChange = { preferences.setVerticalOffset(it) },
-                        valueRange = -50f..50f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Scale
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Scale",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${(settings.positionSettings.scale * 100).roundToInt()}%",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Slider(
-                        value = settings.positionSettings.scale,
-                        onValueChange = { preferences.setScale(it) },
-                        valueRange = 0.5f..1.5f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                }
-            }
-        }
-
-        if (settings.topViewMode == TopViewMode.YIL) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ===== Feature 6: Goal Tracking Section (Yil-only) =====
-        SettingsSection(title = "Goal Countdown") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Enable Goals", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                        BrandSwitch(
-                            checked = settings.goalSettings.enabled,
-                            onCheckedChange = { preferences.setGoalsEnabled(it) },
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = settings.goalSettings.enabled,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Column {
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text("Position", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                GoalPositionOption(
-                                    label = "Top",
-                                    position = GoalPosition.TOP,
-                                    isSelected = settings.goalSettings.position == GoalPosition.TOP,
-                                    onClick = { preferences.setGoalsPosition(GoalPosition.TOP) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                GoalPositionOption(
-                                    label = "Bottom",
-                                    position = GoalPosition.BOTTOM,
-                                    isSelected = settings.goalSettings.position == GoalPosition.BOTTOM,
-                                    onClick = { preferences.setGoalsPosition(GoalPosition.BOTTOM) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Goals list
-                            if (settings.goalSettings.goals.isNotEmpty()) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    settings.goalSettings.goals.forEach { goal ->
-                                        GoalItem(
-                                            goal = goal,
-                                            onEdit = {
-                                                editingGoal = goal
-                                                showGoalEditor = true
-                                            },
-                                            onDelete = { preferences.deleteGoal(goal.id) }
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
-
-                            Button(
-                                onClick = {
-                                    editingGoal = null
-                                    showGoalEditor = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Add Goal")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        } // end if YIL (Goal Countdown section)
-
-        Spacer(modifier = Modifier.height(32.dp))
-    }
-
-    // Color Picker Dialogs
-    if (showBgColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.customColors.backgroundColor,
-            title = "Background Color",
-            onColorSelected = {
-                preferences.setCustomBackgroundColor(it)
-                showBgColorPicker = false
-            },
-            onDismiss = { showBgColorPicker = false }
-        )
-    }
-
-    if (showFilledColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.customColors.filledDotColor,
-            title = "Filled Dots Color",
-            onColorSelected = {
-                preferences.setCustomFilledDotColor(it)
-                showFilledColorPicker = false
-            },
-            onDismiss = { showFilledColorPicker = false }
-        )
-    }
-
-    if (showEmptyColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.customColors.emptyDotColor,
-            title = "Empty Dots Color",
-            onColorSelected = {
-                preferences.setCustomEmptyDotColor(it)
-                showEmptyColorPicker = false
-            },
-            onDismiss = { showEmptyColorPicker = false }
-        )
-    }
-
-    if (showTodayColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.customColors.todayDotColor,
-            title = "Today's Dot Color",
-            onColorSelected = {
-                preferences.setCustomTodayDotColor(it)
-                showTodayColorPicker = false
-            },
-            onDismiss = { showTodayColorPicker = false }
-        )
-    }
-
-    // Footer color picker
-    if (showFooterColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.footerTextSettings.color,
-            title = "Footer Text Color",
-            onColorSelected = {
-                preferences.setFooterColor(it)
-                showFooterColorPicker = false
-            },
-            onDismiss = { showFooterColorPicker = false }
-        )
-    }
-
-    // Goal editor dialog
     if (showGoalEditor) {
         GoalEditorDialog(
             goal = editingGoal,
@@ -943,58 +257,1319 @@ fun SettingsScreen(
         )
     }
 
-    // Glass tint color picker
-    if (showGlassTintPicker) {
-        ColorPickerDialog(
-            initialColor = settings.glassEffectSettings.tint,
-            title = "Glass Tint Color",
-            onColorSelected = {
-                preferences.setGlassTint(it)
-                showGlassTintPicker = false
-            },
-            onDismiss = { showGlassTintPicker = false }
-        )
+}
+
+private val ModernGold = Color(0xFFFFC62E)
+private val ModernGoldMuted = Color(0xFFC7A35F)
+private val ModernInk = Color(0xFF050505)
+private val ModernPanel = Color(0xFF141414)
+private val ModernPanelSoft = Color(0xFF1B1A16)
+private val ModernStroke = Color(0xFF2A251B)
+private val ModernTextMuted = Color(0xFFAAA49A)
+
+private enum class SettingIcon {
+    Sound,
+    Phone,
+    Sun,
+    Text,
+    Horizontal,
+    Vertical,
+    Scale,
+    Target,
+    Calendar,
+    List,
+    Grid,
+}
+
+@Composable
+private fun ModernSettingsContent(
+    settings: WallpaperSettings,
+    preferences: LifeDotsPreferences,
+    snackbarHostState: SnackbarHostState,
+    scope: CoroutineScope,
+    onAddGoal: () -> Unit,
+    onEditGoal: (Goal) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val feedback = rememberUxFeedback(settings.soundsEnabled, settings.vibrationsEnabled)
+
+    LaunchedEffect(settings.viewModeSettings.mode, settings.viewModeSettings.showMonthLabels) {
+        if (settings.viewModeSettings.mode != ViewMode.CALENDAR) {
+            preferences.setViewMode(ViewMode.CALENDAR)
+        }
+        if (!settings.viewModeSettings.showMonthLabels) {
+            preferences.setShowMonthLabels(true)
+        }
     }
 
-    // Tree trunk color picker
-    if (showTreeTrunkColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.treeEffectSettings.trunkColor,
-            title = "Trunk Color",
-            onColorSelected = {
-                preferences.setTreeTrunkColor(it)
-                showTreeTrunkColorPicker = false
-            },
-            onDismiss = { showTreeTrunkColorPicker = false }
-        )
-    }
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Black, Color(0xFF050403), Color.Black)
+                )
+            ),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 10.dp,
+            top = 14.dp,
+            end = 10.dp,
+            bottom = 24.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            ModernModeToggle(
+                selected = settings.topViewMode,
+                onSelected = { preferences.setTopViewMode(it) },
+            )
+        }
 
-    // Tree leaf color picker
-    if (showTreeLeafColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.treeEffectSettings.leafColor,
-            title = "Leaf Color",
-            onColorSelected = {
-                preferences.setTreeLeafColor(it)
-                showTreeLeafColorPicker = false
-            },
-            onDismiss = { showTreeLeafColorPicker = false }
-        )
-    }
+        item {
+            ModernAutoSwitchCard(
+                settings = settings,
+                onEnabledChange = { wantOn ->
+                    if (wantOn && settings.umrSettings.birthdayEpochMs == 0L) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = "Set your birthday first",
+                                actionLabel = "OK",
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    } else {
+                        feedback.confirm()
+                        preferences.setAutoSwitchEnabled(wantOn)
+                    }
+                },
+                onIntervalChange = { ms ->
+                    feedback.tick()
+                    preferences.setAutoSwitchIntervalMs(ms)
+                },
+            )
+        }
 
-    // Tree bloom color picker
-    if (showTreeBloomColorPicker) {
-        ColorPickerDialog(
-            initialColor = settings.treeEffectSettings.bloomColor,
-            title = "Bloom Color",
-            onColorSelected = {
-                preferences.setTreeBloomColor(it)
-                showTreeBloomColorPicker = false
-            },
-            onDismiss = { showTreeBloomColorPicker = false }
+        item {
+            ModernSectionTitle("THEME")
+            ModernPanelCard(contentPadding = 10.dp) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ModernThemeOption(
+                        label = "Light",
+                        selected = settings.theme == ThemeOption.LIGHT,
+                        background = Color(0xFFF8EFD7),
+                        dotColors = listOf(Color(0xFF69645D), Color(0xFF858078)),
+                        onClick = { preferences.setTheme(ThemeOption.LIGHT) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ModernThemeOption(
+                        label = "Dark",
+                        selected = settings.theme == ThemeOption.DARK,
+                        background = Color(0xFF25231F),
+                        dotColors = listOf(Color(0xFFB6B0A6), Color(0xFFE7E0D2)),
+                        onClick = { preferences.setTheme(ThemeOption.DARK) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ModernThemeOption(
+                        label = "AMOLED",
+                        selected = settings.theme == ThemeOption.AMOLED,
+                        background = Color.Black,
+                        dotColors = listOf(Color(0xFFE5E0D4), ModernGold),
+                        onClick = { preferences.setTheme(ThemeOption.AMOLED) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ModernThemeOption(
+                        label = "Custom",
+                        selected = settings.theme == ThemeOption.CUSTOM,
+                        background = Color(0xFF252015),
+                        dotColors = listOf(Color(0xFFD9C88B), ModernGold),
+                        onClick = { preferences.setTheme(ThemeOption.CUSTOM) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        item {
+            ModernSectionTitle("TRANSPARENCY")
+            ModernPanelCard {
+                ModernPercentSlider(
+                    title = "Filled Dots",
+                    subtitle = "Opacity of past days",
+                    value = settings.filledDotAlpha,
+                    valueText = "${(settings.filledDotAlpha * 100).roundToInt()}%",
+                    onValueChange = { preferences.setFilledDotAlpha(it) },
+                )
+                ModernDivider()
+                ModernPercentSlider(
+                    title = "Empty Dots",
+                    subtitle = "Opacity of future days",
+                    value = settings.emptyDotAlpha,
+                    valueText = "${(settings.emptyDotAlpha * 100).roundToInt()}%",
+                    onValueChange = { preferences.setEmptyDotAlpha(it) },
+                )
+            }
+        }
+
+        item {
+            ModernPanelCard {
+                ModernSettingRow(
+                    icon = SettingIcon.Sun,
+                    title = "Highlight Today",
+                    subtitle = "Show a distinct marker for today's dot",
+                    trailing = {
+                        ModernSwitch(
+                            checked = settings.highlightToday,
+                            onCheckedChange = { preferences.setHighlightToday(it) },
+                        )
+                    },
+                )
+            }
+        }
+
+        item {
+            ModernSectionTitle("VIEW MODE")
+            ModernPanelCard {
+                ModernSelectPill(
+                    icon = SettingIcon.Grid,
+                    label = "Year",
+                    selected = true,
+                    onClick = {
+                        preferences.setViewMode(ViewMode.CALENDAR)
+                        preferences.setShowMonthLabels(true)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                ModernDivider(top = 16.dp, bottom = 14.dp)
+
+                Text(
+                    text = "Calendar Columns",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    ModernColumnOption(
+                        label = "2 × 6",
+                        columns = 2,
+                        selected = settings.calendarViewSettings.columnsPerRow == 2,
+                        onClick = { preferences.setCalendarColumns(2) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ModernColumnOption(
+                        label = "3 × 4",
+                        columns = 3,
+                        selected = settings.calendarViewSettings.columnsPerRow == 3,
+                        onClick = { preferences.setCalendarColumns(3) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+            }
+        }
+
+        item {
+            ModernSectionTitle("POSITION & SCALE")
+            ModernPanelCard {
+                ModernOffsetRow(
+                    icon = SettingIcon.Horizontal,
+                    title = "Horizontal Offset",
+                    subtitle = "Move left or right",
+                    value = settings.positionSettings.horizontalOffset,
+                    valueRange = -50f..50f,
+                    valueText = "${settings.positionSettings.horizontalOffset.roundToInt()}%",
+                    onValueChange = { preferences.setHorizontalOffset(it) },
+                )
+                ModernOffsetRow(
+                    icon = SettingIcon.Vertical,
+                    title = "Vertical Offset",
+                    subtitle = "Move up or down",
+                    value = settings.positionSettings.verticalOffset,
+                    valueRange = -50f..50f,
+                    valueText = "${settings.positionSettings.verticalOffset.roundToInt()}%",
+                    onValueChange = { preferences.setVerticalOffset(it) },
+                )
+                ModernOffsetRow(
+                    icon = SettingIcon.Scale,
+                    title = "Scale",
+                    subtitle = "Resize the entire grid",
+                    value = settings.positionSettings.scale,
+                    valueRange = 0.5f..1.5f,
+                    valueText = "${(settings.positionSettings.scale * 100).roundToInt()}%",
+                    onValueChange = { preferences.setScale(it) },
+                )
+            }
+        }
+
+        item {
+            ModernSectionTitle("GOAL COUNTDOWN")
+            ModernPanelCard {
+                ModernSettingRow(
+                    icon = SettingIcon.Target,
+                    title = "Enable Goals",
+                    subtitle = "Countdown to important dates",
+                    trailing = {
+                        ModernSwitch(
+                            checked = settings.goalSettings.enabled,
+                            onCheckedChange = { preferences.setGoalsEnabled(it) },
+                        )
+                    },
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Position",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = "Where countdown appears",
+                            color = ModernTextMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                        )
+                    }
+                    ModernGoalPositionButton(
+                        label = "Top",
+                        selected = settings.goalSettings.position == GoalPosition.TOP,
+                        position = GoalPosition.TOP,
+                        onClick = { preferences.setGoalsPosition(GoalPosition.TOP) },
+                    )
+                    ModernGoalPositionButton(
+                        label = "Bottom",
+                        selected = settings.goalSettings.position == GoalPosition.BOTTOM,
+                        position = GoalPosition.BOTTOM,
+                        onClick = { preferences.setGoalsPosition(GoalPosition.BOTTOM) },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                ModernPrimaryButton(text = "+  Add Goal", onClick = onAddGoal)
+            }
+        }
+
+        if (settings.goalSettings.goals.isNotEmpty()) {
+            items(settings.goalSettings.goals, key = { it.id }) { goal ->
+                ModernGoalItem(goal = goal, onClick = { onEditGoal(goal) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModernModeToggle(
+    selected: TopViewMode,
+    onSelected: (TopViewMode) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(42.dp),
+        color = ModernPanel,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .height(46.dp)
+                .padding(2.dp),
+        ) {
+            ModernModeHalf(
+                text = "Yil",
+                selected = selected == TopViewMode.YIL,
+                onClick = { onSelected(TopViewMode.YIL) },
+                modifier = Modifier.weight(1f),
+            )
+            ModernModeHalf(
+                text = "Umr",
+                selected = selected == TopViewMode.UMR,
+                onClick = { onSelected(TopViewMode.UMR) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModernModeHalf(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background by animateColorAsState(
+        targetValue = if (selected) ModernGold else Color.Transparent,
+        label = "modeColor",
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) Color.Black else ModernGoldMuted,
+        label = "modeText",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(38.dp))
+            .background(background)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
+
+@Composable
+private fun ModernAutoSwitchCard(
+    settings: WallpaperSettings,
+    onEnabledChange: (Boolean) -> Unit,
+    onIntervalChange: (Long) -> Unit,
+) {
+    val intervals = listOf(
+        1_000L to "1s",
+        5_000L to "5s",
+        30_000L to "30s",
+        5 * 60_000L to "5m",
+        30 * 60_000L to "30m",
+        60 * 60_000L to "1h",
+    )
+    val selectedIndex = intervals.indexOfFirst { it.first == settings.autoSwitchSettings.intervalMs }
+        .takeIf { it >= 0 } ?: intervals.lastIndex
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Auto-switch",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Automatically rotate between Yil and Umr.",
+                    color = ModernTextMuted,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            ModernSwitch(
+                checked = settings.autoSwitchSettings.enabled,
+                onCheckedChange = onEnabledChange,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Switch every",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "Every ${intervals[selectedIndex].second}",
+                color = ModernGold,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "⌄",
+                color = ModernGold,
+                fontSize = 21.sp,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+
+        ModernDiscreteSlider(
+            selectedIndex = selectedIndex,
+            itemCount = intervals.size,
+            onIndexChange = { index -> onIntervalChange(intervals[index].first) },
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            intervals.forEachIndexed { index, (_, label) ->
+                Text(
+                    text = label,
+                    color = if (index == selectedIndex) ModernGold else ModernTextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Medium,
+                )
+            }
+        }
+
+        Text(
+            text = if (settings.autoSwitchSettings.enabled) {
+                "Auto-switch is on — wallpaper rotates automatically."
+            } else {
+                "Auto-switch is off — selected mode stays active."
+            },
+            color = ModernTextMuted,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ModernSectionTitle(text: String) {
+    Text(
+        text = text,
+        color = ModernGold,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 4.dp, bottom = 7.dp),
+    )
+}
+
+@Composable
+private fun ModernPanelCard(
+    modifier: Modifier = Modifier,
+    contentPadding: Dp = 12.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = ModernPanel,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.035f),
+                            Color.Transparent,
+                            ModernGold.copy(alpha = 0.025f),
+                        )
+                    )
+                )
+                .padding(contentPadding),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun ModernSettingRow(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    icon: SettingIcon? = null,
+    compact: Boolean = false,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = if (compact) 4.dp else 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            IconDisk(icon = icon)
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subtitle,
+                color = ModernTextMuted,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (trailing != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            trailing()
+        }
+    }
+}
+
+@Composable
+private fun ModernActionRow(
+    icon: SettingIcon,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconDisk(icon = icon)
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = subtitle,
+                color = ModernTextMuted,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = "›",
+            color = ModernGold,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Light,
+        )
+    }
+}
+
+@Composable
+private fun ModernDivider(
+    top: Dp = 10.dp,
+    bottom: Dp = 10.dp,
+) {
+    Spacer(modifier = Modifier.height(top))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.08f))
+    )
+    Spacer(modifier = Modifier.height(bottom))
+}
+
+@Composable
+private fun ModernSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val knobOffset by animateDpAsState(
+        targetValue = if (checked) 27.dp else 3.dp,
+        label = "switchOffset",
+    )
+    Box(
+        modifier = modifier
+            .width(58.dp)
+            .height(34.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (checked) ModernGold else Color(0xFF1B1B1B))
+            .border(
+                width = 1.dp,
+                color = if (checked) ModernGold else Color.White.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 3.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(start = knobOffset)
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF050505))
+        )
+    }
+}
+
+@Composable
+private fun IconDisk(
+    icon: SettingIcon,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(ModernGold.copy(alpha = 0.11f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (icon == SettingIcon.Text) {
+            Text(
+                text = "Tt",
+                color = ModernGold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        } else {
+            Canvas(modifier = Modifier.size(size * 0.58f)) {
+                drawSettingIcon(icon, ModernGold)
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawSettingIcon(icon: SettingIcon, color: Color) {
+    val stroke = size.minDimension * 0.09f
+    val center = Offset(size.width / 2f, size.height / 2f)
+    when (icon) {
+        SettingIcon.Sound -> {
+            val body = Path().apply {
+                moveTo(size.width * 0.10f, size.height * 0.40f)
+                lineTo(size.width * 0.30f, size.height * 0.40f)
+                lineTo(size.width * 0.50f, size.height * 0.22f)
+                lineTo(size.width * 0.50f, size.height * 0.78f)
+                lineTo(size.width * 0.30f, size.height * 0.60f)
+                lineTo(size.width * 0.10f, size.height * 0.60f)
+                close()
+            }
+            drawPath(body, color, style = Stroke(width = stroke, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            drawArc(
+                color = color,
+                startAngle = -38f,
+                sweepAngle = 76f,
+                useCenter = false,
+                topLeft = Offset(size.width * 0.48f, size.height * 0.25f),
+                size = Size(size.width * 0.38f, size.height * 0.50f),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = color,
+                startAngle = -38f,
+                sweepAngle = 76f,
+                useCenter = false,
+                topLeft = Offset(size.width * 0.58f, size.height * 0.13f),
+                size = Size(size.width * 0.48f, size.height * 0.74f),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+        }
+        SettingIcon.Phone -> {
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(size.width * 0.26f, size.height * 0.08f),
+                size = Size(size.width * 0.48f, size.height * 0.84f),
+                cornerRadius = CornerRadius(size.width * 0.10f, size.width * 0.10f),
+                style = Stroke(width = stroke),
+            )
+            drawCircle(color, radius = stroke * 0.6f, center = Offset(center.x, size.height * 0.80f))
+            drawLine(
+                color = color,
+                start = Offset(size.width * 0.12f, size.height * 0.25f),
+                end = Offset(size.width * 0.12f, size.height * 0.75f),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = color,
+                start = Offset(size.width * 0.88f, size.height * 0.25f),
+                end = Offset(size.width * 0.88f, size.height * 0.75f),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
+        SettingIcon.Sun -> {
+            drawCircle(color, radius = size.minDimension * 0.18f, center = center, style = Stroke(width = stroke))
+            repeat(8) { i ->
+                val angle = i * (Math.PI.toFloat() / 4f)
+                val start = Offset(center.x + cos(angle) * size.width * 0.30f, center.y + sin(angle) * size.height * 0.30f)
+                val end = Offset(center.x + cos(angle) * size.width * 0.43f, center.y + sin(angle) * size.height * 0.43f)
+                drawLine(color, start, end, strokeWidth = stroke, cap = StrokeCap.Round)
+            }
+        }
+        SettingIcon.Horizontal -> {
+            drawLine(color, Offset(size.width * 0.14f, center.y), Offset(size.width * 0.86f, center.y), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.14f, center.y), Offset(size.width * 0.28f, size.height * 0.35f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.14f, center.y), Offset(size.width * 0.28f, size.height * 0.65f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.86f, center.y), Offset(size.width * 0.72f, size.height * 0.35f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.86f, center.y), Offset(size.width * 0.72f, size.height * 0.65f), strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+        SettingIcon.Vertical -> {
+            drawLine(color, Offset(center.x, size.height * 0.14f), Offset(center.x, size.height * 0.86f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(center.x, size.height * 0.14f), Offset(size.width * 0.35f, size.height * 0.28f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(center.x, size.height * 0.14f), Offset(size.width * 0.65f, size.height * 0.28f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(center.x, size.height * 0.86f), Offset(size.width * 0.35f, size.height * 0.72f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(center.x, size.height * 0.86f), Offset(size.width * 0.65f, size.height * 0.72f), strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+        SettingIcon.Scale -> {
+            drawLine(color, Offset(size.width * 0.16f, size.height * 0.16f), Offset(size.width * 0.38f, size.height * 0.16f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.16f, size.height * 0.16f), Offset(size.width * 0.16f, size.height * 0.38f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.84f, size.height * 0.16f), Offset(size.width * 0.62f, size.height * 0.16f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.84f, size.height * 0.16f), Offset(size.width * 0.84f, size.height * 0.38f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.16f, size.height * 0.84f), Offset(size.width * 0.38f, size.height * 0.84f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.16f, size.height * 0.84f), Offset(size.width * 0.16f, size.height * 0.62f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.84f, size.height * 0.84f), Offset(size.width * 0.62f, size.height * 0.84f), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(size.width * 0.84f, size.height * 0.84f), Offset(size.width * 0.84f, size.height * 0.62f), strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+        SettingIcon.Target -> {
+            drawCircle(color, radius = size.minDimension * 0.36f, center = center, style = Stroke(width = stroke))
+            drawCircle(color, radius = size.minDimension * 0.20f, center = center, style = Stroke(width = stroke))
+            drawCircle(color, radius = stroke * 0.8f, center = center)
+            drawLine(color, Offset(size.width * 0.60f, size.height * 0.40f), Offset(size.width * 0.88f, size.height * 0.12f), strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+        SettingIcon.Calendar -> {
+            drawRoundRect(color, Offset(size.width * 0.12f, size.height * 0.18f), Size(size.width * 0.76f, size.height * 0.70f), CornerRadius(6f, 6f), style = Stroke(width = stroke))
+            drawLine(color, Offset(size.width * 0.12f, size.height * 0.36f), Offset(size.width * 0.88f, size.height * 0.36f), strokeWidth = stroke, cap = StrokeCap.Round)
+            repeat(2) { row ->
+                repeat(3) { col ->
+                    drawCircle(
+                        color = color,
+                        radius = stroke * 0.5f,
+                        center = Offset(size.width * (0.32f + col * 0.18f), size.height * (0.52f + row * 0.18f)),
+                    )
+                }
+            }
+        }
+        SettingIcon.List -> {
+            repeat(3) { row ->
+                val y = size.height * (0.26f + row * 0.24f)
+                drawLine(color, Offset(size.width * 0.16f, y), Offset(size.width * 0.28f, y), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(size.width * 0.42f, y), Offset(size.width * 0.84f, y), strokeWidth = stroke, cap = StrokeCap.Round)
+            }
+        }
+        SettingIcon.Grid -> {
+            repeat(3) { row ->
+                repeat(3) { col ->
+                    drawCircle(
+                        color = color,
+                        radius = stroke * 0.75f,
+                        center = Offset(size.width * (0.28f + col * 0.22f), size.height * (0.28f + row * 0.22f)),
+                    )
+                }
+            }
+        }
+        SettingIcon.Text -> Unit
+    }
+}
+
+@Composable
+private fun ModernThemeOption(
+    label: String,
+    selected: Boolean,
+    background: Color,
+    dotColors: List<Color>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor = if (selected) ModernGold else Color.Transparent
+    Box(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
+                .clickable(onClick = onClick)
+                .padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            DotPreview(background = background, dotColors = dotColors)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = label,
+                color = if (selected) ModernGold else Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
+        if (selected) {
+            CheckBadge(modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+@Composable
+private fun DotPreview(
+    background: Color,
+    dotColors: List<Color>,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            repeat(4) { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    repeat(4) { col ->
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(dotColors[(row + col) % dotColors.size])
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModernPercentSlider(
+    title: String,
+    subtitle: String,
+    value: Float,
+    valueText: String,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(text = subtitle, color = ModernTextMuted, fontSize = 11.sp, maxLines = 1)
+            }
+            Text(
+                text = valueText,
+                color = ModernGold,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        ModernValueSlider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0f..1f,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun ModernOffsetRow(
+    icon: SettingIcon,
+    title: String,
+    subtitle: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    valueText: String,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconDisk(icon = icon, size = 34.dp)
+            Spacer(modifier = Modifier.width(9.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = valueText,
+                color = ModernGold,
+                fontSize = 14.sp,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(48.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        ModernValueSlider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 43.dp, end = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun ModernSelectPill(
+    icon: SettingIcon,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (selected) ModernGold else Color.White.copy(alpha = 0.72f)
+    Surface(
+        modifier = modifier
+            .height(52.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = Color.Black.copy(alpha = 0.25f),
+        border = BorderStroke(1.3.dp, if (selected) ModernGold else Color.White.copy(alpha = 0.10f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Canvas(modifier = Modifier.size(20.dp)) {
+                drawSettingIcon(icon, color)
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                color = color,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModernColumnOption(
+    label: String,
+    columns: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(62.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(14.dp),
+            color = Color.Black.copy(alpha = 0.22f),
+            border = BorderStroke(1.3.dp, if (selected) ModernGold else Color.White.copy(alpha = 0.10f)),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                CalendarMiniGrid(columns = columns, selected = selected)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = label,
+                    color = if (selected) ModernGold else ModernTextMuted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        if (selected) {
+            CheckBadge(modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+@Composable
+private fun CalendarMiniGrid(
+    columns: Int,
+    selected: Boolean,
+) {
+    val color = if (selected) ModernGold else Color.White.copy(alpha = 0.52f)
+    val rows = 12 / columns
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        repeat(rows) {
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(columns) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .border(1.5.dp, color, RoundedCornerShape(2.dp))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModernGoalPositionButton(
+    label: String,
+    selected: Boolean,
+    position: GoalPosition,
+    onClick: () -> Unit,
+) {
+    Box {
+        Surface(
+            modifier = Modifier
+                .width(90.dp)
+                .height(56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(14.dp),
+            color = Color.Black.copy(alpha = 0.22f),
+            border = BorderStroke(1.3.dp, if (selected) ModernGold else Color.White.copy(alpha = 0.10f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(28.dp)
+                        .height(16.dp),
+                    contentAlignment = if (position == GoalPosition.TOP) Alignment.TopCenter else Alignment.BottomCenter,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .background(if (selected) ModernGold else Color.White.copy(alpha = 0.58f), RoundedCornerShape(2.dp))
+                    )
+                }
+                Text(
+                    text = label,
+                    color = if (selected) ModernGold else ModernTextMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        if (selected) {
+            CheckBadge(modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+@Composable
+private fun ModernPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(ModernGold)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = Color.Black,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun ModernGoalItem(
+    goal: Goal,
+    onClick: () -> Unit,
+) {
+    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
+    ModernPanelCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onClick)
+                .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(goal.color))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+            )
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = goal.title,
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = dateFormatter.format(Date(goal.targetDate)),
+                    color = ModernTextMuted,
+                    fontSize = 14.sp,
+                )
+            }
+            Text(text = "›", color = ModernGold, fontSize = 34.sp)
+        }
+    }
+}
+
+@Composable
+private fun CheckBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(24.dp)
+            .clip(CircleShape)
+            .background(ModernGold),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "✓",
+            color = Color.Black,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Black,
+        )
+    }
+}
+
+@Composable
+private fun ModernDiscreteSlider(
+    selectedIndex: Int,
+    itemCount: Int,
+    onIndexChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var widthPx by remember { mutableStateOf(1) }
+    fun indexFromX(x: Float): Int {
+        val usable = widthPx.toFloat().coerceAtLeast(1f)
+        return ((x / usable) * (itemCount - 1)).roundToInt().coerceIn(0, itemCount - 1)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .onSizeChanged { widthPx = it.width }
+            .pointerInput(itemCount) {
+                detectTapGestures { offset -> onIndexChange(indexFromX(offset.x)) }
+            }
+            .pointerInput(itemCount) {
+                detectDragGestures { change, _ ->
+                    onIndexChange(indexFromX(change.position.x))
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val y = size.height / 2f
+            val thumbRadius = 8.5.dp.toPx()
+            val tickRadius = 4.2.dp.toPx()
+            val startX = thumbRadius
+            val endX = size.width - thumbRadius
+            val selectedX = startX + (endX - startX) * (selectedIndex / (itemCount - 1).toFloat())
+
+            drawLine(
+                color = ModernGold,
+                start = Offset(startX, y),
+                end = Offset(endX, y),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            repeat(itemCount) { index ->
+                val x = startX + (endX - startX) * (index / (itemCount - 1).toFloat())
+                drawCircle(color = ModernGold, radius = tickRadius, center = Offset(x, y))
+            }
+            drawCircle(color = ModernGold, radius = thumbRadius, center = Offset(selectedX, y))
+        }
+    }
+}
+
+@Composable
+private fun ModernValueSlider(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var widthPx by remember { mutableStateOf(1) }
+    val range = valueRange.endInclusive - valueRange.start
+    fun valueFromX(x: Float): Float {
+        val usable = widthPx.toFloat().coerceAtLeast(1f)
+        val fraction = (x / usable).coerceIn(0f, 1f)
+        return valueRange.start + range * fraction
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(24.dp)
+            .onSizeChanged { widthPx = it.width }
+            .pointerInput(valueRange) {
+                detectTapGestures { offset -> onValueChange(valueFromX(offset.x)) }
+            }
+            .pointerInput(valueRange) {
+                detectDragGestures { change, _ ->
+                    onValueChange(valueFromX(change.position.x))
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val y = size.height / 2f
+            val thumbRadius = 7.5.dp.toPx()
+            val startX = thumbRadius
+            val endX = size.width - thumbRadius
+            val fraction = ((value - valueRange.start) / range).coerceIn(0f, 1f)
+            val thumbX = startX + (endX - startX) * fraction
+
+            drawLine(
+                color = Color.White.copy(alpha = 0.18f),
+                start = Offset(startX, y),
+                end = Offset(endX, y),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = ModernGold,
+                start = Offset(startX, y),
+                end = Offset(thumbX, y),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawCircle(color = ModernGold, radius = thumbRadius, center = Offset(thumbX, y))
+        }
+    }
+}
+
+@Composable
+private fun modernSliderColors() = SliderDefaults.colors(
+    thumbColor = ModernGold,
+    activeTrackColor = ModernGold,
+    inactiveTrackColor = Color.White.copy(alpha = 0.20f),
+    activeTickColor = ModernGold,
+    inactiveTickColor = ModernGold.copy(alpha = 0.75f),
+)
 
 @Composable
 private fun ModeTopSection(
