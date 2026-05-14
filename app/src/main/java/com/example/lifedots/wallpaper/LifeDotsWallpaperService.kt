@@ -854,7 +854,7 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             val msPerWeek = 7L * 24L * 60L * 60L * 1000L
             val totalCells = UmrLayoutCompute.ROWS * UmrLayoutCompute.COLS  // 4160
-            val weeksLived = if (birthdayMs > 0L)
+            val weeksLived = if (birthdayMs != 0L && now >= birthdayMs)
                 ((now - birthdayMs) / msPerWeek).toInt().coerceAtMost(totalCells - 1)
             else -1
 

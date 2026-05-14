@@ -2533,7 +2533,7 @@ private fun UmrDobRow(label: String, ms: Long, fmt: SimpleDateFormat) {
     Row {
         Text("$label  ", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
         Text(
-            if (ms > 0L) fmt.format(Date(ms)) else "Not set",
+            if (ms != 0L) fmt.format(Date(ms)) else "Not set",
             color = Color(0xFFEDE8DE),
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
@@ -2590,11 +2590,11 @@ private fun LifeDataEditorSheet(
     // so that subsequent prefs changes (caused by live-save firing) don't
     // overwrite what the user is currently typing.
     fun seedDay(ms: Long) =
-        if (ms <= 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).dayOfMonth.toString().padStart(2, '0')
+        if (ms == 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).dayOfMonth.toString().padStart(2, '0')
     fun seedMonth(ms: Long) =
-        if (ms <= 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).monthValue.toString().padStart(2, '0')
+        if (ms == 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).monthValue.toString().padStart(2, '0')
     fun seedYear(ms: Long) =
-        if (ms <= 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).year.toString()
+        if (ms == 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).year.toString()
 
     var meD by remember { mutableStateOf(seedDay(settings.umrSettings.birthdayEpochMs)) }
     var meM by remember { mutableStateOf(seedMonth(settings.umrSettings.birthdayEpochMs)) }
