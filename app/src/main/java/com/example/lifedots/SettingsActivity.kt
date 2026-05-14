@@ -71,7 +71,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -1531,18 +1530,31 @@ private fun ModernDiscreteSlider(
             val startX = thumbRadius
             val endX = size.width - thumbRadius
             val selectedX = startX + (endX - startX) * (selectedIndex / (itemCount - 1).toFloat())
+            val inactiveColor = Color.White.copy(alpha = 0.20f)
 
+            // Active (filled) line from start to thumb
             drawLine(
                 color = ModernGold,
                 start = Offset(startX, y),
+                end = Offset(selectedX, y),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            // Inactive (unfilled) line from thumb to end
+            drawLine(
+                color = inactiveColor,
+                start = Offset(selectedX, y),
                 end = Offset(endX, y),
                 strokeWidth = 3.dp.toPx(),
                 cap = StrokeCap.Round,
             )
+            // Ticks — gold up to and including selected, muted after
             repeat(itemCount) { index ->
                 val x = startX + (endX - startX) * (index / (itemCount - 1).toFloat())
-                drawCircle(color = ModernGold, radius = tickRadius, center = Offset(x, y))
+                val color = if (index <= selectedIndex) ModernGold else inactiveColor
+                drawCircle(color = color, radius = tickRadius, center = Offset(x, y))
             }
+            // Thumb
             drawCircle(color = ModernGold, radius = thumbRadius, center = Offset(selectedX, y))
         }
     }
@@ -2607,14 +2619,40 @@ private fun LifeDataEditorSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val today = LocalDate.now()
 
-    val initialMs = when (selected) {
-        WhoTab.ME  -> settings.umrSettings.birthdayEpochMs
-        WhoTab.DAD -> settings.umrSettings.dadBirthdayEpochMs
-        WhoTab.MOM -> settings.umrSettings.momBirthdayEpochMs
+    // Per-person scratch text state. Seeded ONCE from prefs on first compose
+    // so that subsequent prefs changes (caused by live-save firing) don't
+    // overwrite what the user is currently typing.
+    fun seedDay(ms: Long) =
+        if (ms <= 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).dayOfMonth.toString().padStart(2, '0')
+    fun seedMonth(ms: Long) =
+        if (ms <= 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).monthValue.toString().padStart(2, '0')
+    fun seedYear(ms: Long) =
+        if (ms <= 0L) "" else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).year.toString()
+
+    var meD by remember { mutableStateOf(seedDay(settings.umrSettings.birthdayEpochMs)) }
+    var meM by remember { mutableStateOf(seedMonth(settings.umrSettings.birthdayEpochMs)) }
+    var meY by remember { mutableStateOf(seedYear(settings.umrSettings.birthdayEpochMs)) }
+    var dadD by remember { mutableStateOf(seedDay(settings.umrSettings.dadBirthdayEpochMs)) }
+    var dadM by remember { mutableStateOf(seedMonth(settings.umrSettings.dadBirthdayEpochMs)) }
+    var dadY by remember { mutableStateOf(seedYear(settings.umrSettings.dadBirthdayEpochMs)) }
+    var momD by remember { mutableStateOf(seedDay(settings.umrSettings.momBirthdayEpochMs)) }
+    var momM by remember { mutableStateOf(seedMonth(settings.umrSettings.momBirthdayEpochMs)) }
+    var momY by remember { mutableStateOf(seedYear(settings.umrSettings.momBirthdayEpochMs)) }
+
+    fun trySave(who: WhoTab, d: String, m: String, y: String) {
+        val di = d.toIntOrNull() ?: return
+        val mi = m.toIntOrNull() ?: return
+        val yi = y.toIntOrNull() ?: return
+        if (yi !in 1900..today.year) return
+        val date = runCatching { LocalDate.of(yi, mi, di) }.getOrNull() ?: return
+        if (date.isAfter(today)) return
+        val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        when (who) {
+            WhoTab.ME  -> preferences.setUmrBirthday(ms)
+            WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
+            WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
+        }
     }
-    val initialDate: LocalDate? =
-        if (initialMs <= 0L) null
-        else Instant.ofEpochMilli(initialMs).atZone(ZoneId.systemDefault()).toLocalDate()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2636,7 +2674,13 @@ private fun LifeDataEditorSheet(
                     modifier = Modifier.weight(1f),
                 )
                 Button(
-                    onClick = onDismiss,
+                    onClick = {
+                        // Defensive sweep — save anything currently valid.
+                        trySave(WhoTab.ME,  meD,  meM,  meY)
+                        trySave(WhoTab.DAD, dadD, dadM, dadY)
+                        trySave(WhoTab.MOM, momD, momM, momY)
+                        onDismiss()
+                    },
                     colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFFC62E)),
                 ) { Text("Done") }
             }
@@ -2647,24 +2691,24 @@ private fun LifeDataEditorSheet(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            key(selected) {
-                DateNumberInputs(
-                    day = initialDate?.dayOfMonth,
-                    month = initialDate?.monthValue,
-                    year = initialDate?.year,
-                    onChange = { d, m, y ->
-                        if (d != null && m != null && y != null && y in 1900..today.year) {
-                            val date = runCatching { LocalDate.of(y, m, d) }.getOrNull()
-                            if (date != null && !date.isAfter(today)) {
-                                val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                                when (selected) {
-                                    WhoTab.ME  -> preferences.setUmrBirthday(ms)
-                                    WhoTab.DAD -> preferences.setUmrDadBirthday(ms)
-                                    WhoTab.MOM -> preferences.setUmrMomBirthday(ms)
-                                }
-                            }
-                        }
-                    },
+            when (selected) {
+                WhoTab.ME -> DateNumberInputs(
+                    dayText = meD, monthText = meM, yearText = meY,
+                    onDayChange   = { meD = it; trySave(WhoTab.ME, it, meM, meY) },
+                    onMonthChange = { meM = it; trySave(WhoTab.ME, meD, it, meY) },
+                    onYearChange  = { meY = it; trySave(WhoTab.ME, meD, meM, it) },
+                )
+                WhoTab.DAD -> DateNumberInputs(
+                    dayText = dadD, monthText = dadM, yearText = dadY,
+                    onDayChange   = { dadD = it; trySave(WhoTab.DAD, it, dadM, dadY) },
+                    onMonthChange = { dadM = it; trySave(WhoTab.DAD, dadD, it, dadY) },
+                    onYearChange  = { dadY = it; trySave(WhoTab.DAD, dadD, dadM, it) },
+                )
+                WhoTab.MOM -> DateNumberInputs(
+                    dayText = momD, monthText = momM, yearText = momY,
+                    onDayChange   = { momD = it; trySave(WhoTab.MOM, it, momM, momY) },
+                    onMonthChange = { momM = it; trySave(WhoTab.MOM, momD, it, momY) },
+                    onYearChange  = { momY = it; trySave(WhoTab.MOM, momD, momM, it) },
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))

@@ -9,10 +9,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -23,58 +19,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Three side-by-side numeric inputs for DD / MM / YYYY. Matches the Yil
- * settings card aesthetic (dark surface, hairline gold border, AmberGold
- * accents).
- *
- * Accepts nullable Int? so callers can start with empty fields for unset
- * dates. onChange fires with nullable Int? values — callers should treat
- * a null component as "not yet entered".
+ * Three side-by-side numeric inputs for DD / MM / YYYY. Fully CONTROLLED —
+ * caller owns the text state per field and receives every digit-filtered
+ * update via the per-field callbacks. No internal `remember`, no surprise
+ * state resets across recompositions.
  */
 @Composable
 fun DateNumberInputs(
-    day: Int?,
-    month: Int?,
-    year: Int?,
-    onChange: (day: Int?, month: Int?, year: Int?) -> Unit,
+    dayText: String,
+    monthText: String,
+    yearText: String,
+    onDayChange: (String) -> Unit,
+    onMonthChange: (String) -> Unit,
+    onYearChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var dayText by remember(day) { mutableStateOf(day?.toString()?.padStart(2, '0') ?: "") }
-    var monthText by remember(month) { mutableStateOf(month?.toString()?.padStart(2, '0') ?: "") }
-    var yearText by remember(year) { mutableStateOf(year?.toString() ?: "") }
-
-    fun emit() {
-        val d = dayText.toIntOrNull()
-        val m = monthText.toIntOrNull()
-        val y = yearText.toIntOrNull()
-        onChange(d, m, y)
-    }
-
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        DateField(
-            value = dayText,
-            label = "DD",
-            maxLen = 2,
-            onValueChange = { dayText = it; emit() },
-            modifier = Modifier.weight(1f),
-        )
-        DateField(
-            value = monthText,
-            label = "MM",
-            maxLen = 2,
-            onValueChange = { monthText = it; emit() },
-            modifier = Modifier.weight(1f),
-        )
-        DateField(
-            value = yearText,
-            label = "YYYY",
-            maxLen = 4,
-            onValueChange = { yearText = it; emit() },
-            modifier = Modifier.weight(1.4f),
-        )
+        DateField(value = dayText, label = "DD", maxLen = 2,
+            onValueChange = onDayChange, modifier = Modifier.weight(1f))
+        DateField(value = monthText, label = "MM", maxLen = 2,
+            onValueChange = onMonthChange, modifier = Modifier.weight(1f))
+        DateField(value = yearText, label = "YYYY", maxLen = 4,
+            onValueChange = onYearChange, modifier = Modifier.weight(1.4f))
     }
 }
 
