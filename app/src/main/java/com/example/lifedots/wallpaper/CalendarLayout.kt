@@ -200,6 +200,8 @@ data class UmrLayout(
     val counterBandTopPx: Float = 0f,
     /** Canvas-top offset where the dot grid starts (safeTopPx + counterBandHeightPx). */
     val gridTopPx: Float = 0f,
+    /** Wider gap inserted between every group of WEEKS_PER_GROUP columns (month rhythm). */
+    val monthGapPx: Float = 0f,
 )
 
 /**
@@ -211,6 +213,15 @@ data class UmrLayout(
 object UmrLayoutCompute {
     const val ROWS = 80
     const val COLS = 52
+
+    /** Insert a wider horizontal gap every WEEKS_PER_GROUP columns so months read at a glance. */
+    const val WEEKS_PER_GROUP = 4
+
+    /** Number of month-gap insertions per row: between each group of 4. */
+    val MONTH_GAPS_PER_ROW: Int = (COLS - 1) / WEEKS_PER_GROUP
+
+    /** Month gap is 1.6x the regular dot-gap. Small enough to keep density, big enough to read. */
+    private const val MONTH_GAP_MULTIPLIER: Float = 1.6f
 
     /** Multiplier on dot size used to compute the gap. Smaller phones tighter. */
     private fun dotGapRatio(widthPx: Int): Float = when {
@@ -283,13 +294,20 @@ object UmrLayoutCompute {
         val availHeight = (height - gridTopPx - safeBottomPx).coerceAtLeast(1f)
 
         val gapRatio = dotGapRatio(widthPx)
-        // gridWidth = COLS*d + (COLS-1)*gapRatio*d  =>  d = availWidth / (COLS + (COLS-1)*gapRatio)
-        val maxDotByWidth = availWidth / (COLS + (COLS - 1) * gapRatio)
+        // gridWidth = COLS*d + (COLS-1-MONTH_GAPS_PER_ROW)*gap + MONTH_GAPS_PER_ROW*monthGap
+        // monthGap = gap * MONTH_GAP_MULTIPLIER, gap = gapRatio * d
+        // => d = availWidth / (COLS + gapRatio * ((COLS-1-MG) + MG*MULT))
+        val regularGapsPerRow = (COLS - 1) - MONTH_GAPS_PER_ROW
+        val totalGapUnitsPerRow = regularGapsPerRow + MONTH_GAPS_PER_ROW * MONTH_GAP_MULTIPLIER
+        val maxDotByWidth = availWidth / (COLS + totalGapUnitsPerRow * gapRatio)
         val maxDotByHeight = availHeight / (ROWS + (ROWS - 1) * gapRatio)
         val dotSizePx = minOf(maxDotByWidth, maxDotByHeight, DOT_SIZE_CAP_PX).coerceAtLeast(1f)
         val dotGapPx = dotSizePx * gapRatio
+        val monthGapPx = dotGapPx * MONTH_GAP_MULTIPLIER
 
-        val gridWidthPx = COLS * dotSizePx + (COLS - 1) * dotGapPx
+        val gridWidthPx = COLS * dotSizePx +
+            ((COLS - 1) - MONTH_GAPS_PER_ROW) * dotGapPx +
+            MONTH_GAPS_PER_ROW * monthGapPx
         val gridHeightPx = ROWS * dotSizePx + (ROWS - 1) * dotGapPx
         val gridLeftPx = paddingXPx + (availWidth - gridWidthPx) / 2f
         val gridBottomPx = gridTopPx + gridHeightPx
@@ -306,6 +324,24 @@ object UmrLayoutCompute {
             counterBandHeightPx = counterBandHeightPx,
             counterBandTopPx = safeTopPx,
             gridTopPx = gridTopPx,
+            monthGapPx = monthGapPx,
         )
+    }
+
+    /**
+     * Pixel centre for cell index `i` (0-based). Accounts for both the regular
+     * dot gap and the extra month-gap inserted every WEEKS_PER_GROUP cells.
+     * Single source of truth — used by the dot loop and the parent rings.
+     */
+    fun cellCenter(layout: UmrLayout, cellIndex: Int): Pair<Float, Float> {
+        val row = cellIndex / COLS
+        val col = cellIndex % COLS
+        val groupIndex = col / WEEKS_PER_GROUP
+        val step = layout.dotSizePx + layout.dotGapPx
+        val monthOffset = groupIndex * (layout.monthGapPx - layout.dotGapPx)
+        val r = layout.dotSizePx / 2f
+        val cx = layout.gridLeftPx + col * step + monthOffset + r
+        val cy = layout.gridTopPx + row * step + r
+        return cx to cy
     }
 }

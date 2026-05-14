@@ -75,4 +75,29 @@ class UmrLayoutComputeTest {
             0.5f,
         )
     }
+
+    @Test fun `each row has a wider gap every 4 weeks for month grouping`() {
+        val l = compute(1080, 2400)
+        assertTrue("month gap must be wider than regular gap", l.monthGapPx > l.dotGapPx)
+        // 13 groups of 4 in 52 cols => 12 month-gap insertions per row
+        val regularGaps = (UmrLayoutCompute.COLS - 1) - 12
+        val expectedWidth = UmrLayoutCompute.COLS * l.dotSizePx +
+                            regularGaps * l.dotGapPx +
+                            12 * l.monthGapPx
+        assertEquals(
+            "gridWidthPx must include month gaps",
+            expectedWidth,
+            l.gridWidthPx,
+            0.5f,
+        )
+    }
+
+    @Test fun `cellCenter shifts horizontally past month boundaries`() {
+        val l = compute(1080, 2400)
+        val (cx3, _) = UmrLayoutCompute.cellCenter(l, 3)   // last cell in group 0
+        val (cx4, _) = UmrLayoutCompute.cellCenter(l, 4)   // first cell in group 1
+        // Gap between cell 3 and cell 4 should equal dotSize + monthGap, not dotSize + dotGap.
+        val gap34 = (cx4 - cx3) - l.dotSizePx
+        assertEquals("col 3 -> col 4 must use month gap", l.monthGapPx, gap34, 0.5f)
+    }
 }
