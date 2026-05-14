@@ -500,10 +500,10 @@ fun OnboardingScreen(
             )
             HomeActionButton(
                 label = when {
-                    !notificationsAllowed -> "Allow Notifications"
-                    batteryOptimized -> "Allow Background"
-                    isSamsungLikeDevice() -> "Never Sleeping"
-                    else -> "Keep Running"
+                    !notificationsAllowed -> "Press to Allow Notifications"
+                    batteryOptimized -> "Press to Allow Background"
+                    isSamsungLikeDevice() -> "Press for Never Sleeping"
+                    else -> "Press to Keep Running"
                 },
                 icon = HomeIcon.Settings,
                 onClick = { handleKeepRunningButton() },
