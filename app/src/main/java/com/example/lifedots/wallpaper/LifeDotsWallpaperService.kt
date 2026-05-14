@@ -102,6 +102,14 @@ class LifeDotsWallpaperService : WallpaperService() {
             strokeCap = Paint.Cap.ROUND
         }
         private val umrYearBandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val umrMomRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = 0xFFE53935.toInt()   // mom = warm red
+        }
+        private val umrDadRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = 0xFF2D75A8.toInt()   // dad = steel blue
+        }
 
         private val diamondPath = Path()
         private val rectF = RectF()
@@ -945,6 +953,24 @@ class LifeDotsWallpaperService : WallpaperService() {
                     // Future
                     else -> canvas.drawCircle(cx, cy, r, umrEmptyPaint)
                 }
+            }
+
+            // Parent rings — outline-only circles at each parent's current
+            // week-of-life cell. Drawn after the dots so they read on top.
+            val ringStroke = layout.dotSizePx * 0.18f
+            val ringRadius = layout.dotSizePx * 0.62f
+            umrMomRingPaint.strokeWidth = ringStroke
+            umrDadRingPaint.strokeWidth = ringStroke
+
+            val momCell = weekIndexFor(settings.umrSettings.momBirthdayEpochMs, now)
+            if (momCell >= 0) {
+                val (cx, cy) = UmrLayoutCompute.cellCenter(layout, momCell)
+                canvas.drawCircle(cx, cy, ringRadius, umrMomRingPaint)
+            }
+            val dadCell = weekIndexFor(settings.umrSettings.dadBirthdayEpochMs, now)
+            if (dadCell >= 0) {
+                val (cx, cy) = UmrLayoutCompute.cellCenter(layout, dadCell)
+                canvas.drawCircle(cx, cy, ringRadius, umrDadRingPaint)
             }
 
             canvas.restore()
