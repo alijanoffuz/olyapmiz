@@ -873,9 +873,9 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // Configure class-level paints once per draw (avoids per-frame allocation).
             umrFilledPaint.color = colors.filledDot
-            umrFilledPaint.alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrFilledPaint.alpha = (settings.umrSettings.livedAlpha * 255f).toInt().coerceIn(0, 255)
             umrEmptyPaint.color = colors.emptyDot
-            umrEmptyPaint.alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
+            umrEmptyPaint.alpha = (settings.umrSettings.emptyAlpha * 255f).toInt().coerceIn(0, 255)
             umrTodayPaint.color = colors.todayDot
             umrTodayPaint.alpha = 255
             umrGlowPaint.color = colors.todayDot
