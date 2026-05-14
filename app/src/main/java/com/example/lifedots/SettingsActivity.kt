@@ -2640,6 +2640,7 @@ private fun LifeDataEditorSheet(
     var momY by remember { mutableStateOf(seedYear(settings.umrSettings.momBirthdayEpochMs)) }
 
     fun trySave(who: WhoTab, d: String, m: String, y: String) {
+        android.util.Log.d("LifeDataSave", "trySave($who, '$d', '$m', '$y')")
         val di = d.toIntOrNull() ?: return
         val mi = m.toIntOrNull() ?: return
         val yi = y.toIntOrNull() ?: return
@@ -2647,6 +2648,7 @@ private fun LifeDataEditorSheet(
         val date = runCatching { LocalDate.of(yi, mi, di) }.getOrNull() ?: return
         if (date.isAfter(today)) return
         val ms = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        android.util.Log.d("LifeDataSave", "PERSISTING $who -> $date ($ms)")
         when (who) {
             WhoTab.ME  -> preferences.setUmrBirthday(ms)
             WhoTab.DAD -> preferences.setUmrDadBirthday(ms)

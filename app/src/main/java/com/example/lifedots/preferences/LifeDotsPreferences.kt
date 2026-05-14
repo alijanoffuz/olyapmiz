@@ -999,6 +999,7 @@ class LifeDotsPreferences(context: Context) {
     }
 
     fun setUmrBirthday(epochMs: Long) {
+        android.util.Log.d("LifeDataSave", "setUmrMeBirthday($epochMs)")
         prefs.edit().putLong(KEY_UMR_BIRTHDAY_MS, epochMs).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
@@ -1008,6 +1009,7 @@ class LifeDotsPreferences(context: Context) {
     }
 
     fun setUmrMomBirthday(epochMs: Long) {
+        android.util.Log.d("LifeDataSave", "setUmrMomBirthday($epochMs)")
         prefs.edit().putLong(KEY_UMR_MOM_BIRTHDAY_MS, epochMs).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
@@ -1016,6 +1018,7 @@ class LifeDotsPreferences(context: Context) {
     }
 
     fun setUmrDadBirthday(epochMs: Long) {
+        android.util.Log.d("LifeDataSave", "setUmrDadBirthday($epochMs)")
         prefs.edit().putLong(KEY_UMR_DAD_BIRTHDAY_MS, epochMs).apply()
         val current = _settingsFlow.value
         _settingsFlow.value = current.copy(
