@@ -110,6 +110,13 @@ class LifeDotsWallpaperService : WallpaperService() {
             style = Paint.Style.STROKE
             color = 0xFF2D75A8.toInt()   // dad = steel blue
         }
+        private val umrCounterTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            isSubpixelText = true
+        }
+        private val umrCounterSwatchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
 
         private val diamondPath = Path()
         private val rectF = RectF()
@@ -900,6 +907,53 @@ class LifeDotsWallpaperService : WallpaperService() {
             umrGlowPaint.maskFilter = BlurMaskFilter(layout.dotSizePx * 1.5f, BlurMaskFilter.Blur.NORMAL)
 
             val r = layout.dotSizePx / 2f
+
+            // Stat counter band — 3 columns above the grid.
+            run {
+                val bandTop = layout.counterBandTopPx
+                val bandBottom = layout.gridTopPx
+                val bandHeight = (bandBottom - bandTop).coerceAtLeast(1f)
+                val textSize = bandHeight * 0.30f
+                umrCounterTextPaint.textSize = textSize
+                umrCounterTextPaint.color = colors.filledDot
+
+                val totalWeeks = settings.umrSettings.totalWeeks
+                val youWeeks = weekIndexFor(settings.umrSettings.birthdayEpochMs, now).let {
+                    if (it < 0) null else it
+                }
+                val momWeeks = weekIndexFor(settings.umrSettings.momBirthdayEpochMs, now).let {
+                    if (it < 0) null else it
+                }
+                val dadWeeks = weekIndexFor(settings.umrSettings.dadBirthdayEpochMs, now).let {
+                    if (it < 0) null else it
+                }
+
+                val cellWidth = canvas.width.toFloat() / 3f
+                val swatchRadius = textSize * 0.32f
+                val swatchY = bandTop + bandHeight * 0.38f
+                val numberY = bandTop + bandHeight * 0.55f
+                val labelY = bandTop + bandHeight * 0.88f
+
+                data class Col(val label: String, val weeks: Int?, val color: Int)
+                val cols = listOf(
+                    Col("Me",  youWeeks, colors.filledDot),
+                    Col("Mom", momWeeks, 0xFFE53935.toInt()),
+                    Col("Dad", dadWeeks, 0xFF2D75A8.toInt()),
+                )
+                cols.forEachIndexed { idx, c ->
+                    val cx = cellWidth * (idx + 0.5f)
+                    val numberText = if (c.weeks == null) "— / $totalWeeks"
+                                     else "${c.weeks} / $totalWeeks"
+                    umrCounterTextPaint.alpha = if (c.weeks == null) 100 else 230
+                    umrCounterSwatchPaint.color = c.color
+                    umrCounterSwatchPaint.alpha = if (c.weeks == null) 80 else 220
+                    canvas.drawCircle(cx - textSize * 1.6f, swatchY, swatchRadius, umrCounterSwatchPaint)
+                    canvas.drawText(numberText, cx, numberY, umrCounterTextPaint)
+                    umrCounterTextPaint.textSize = textSize * 0.55f
+                    canvas.drawText(c.label, cx, labelY, umrCounterTextPaint)
+                    umrCounterTextPaint.textSize = textSize  // restore
+                }
+            }
 
             // Year-row gradient — soft "you are here" stripe under your
             // current year row. Drawn first so dots paint on top.
