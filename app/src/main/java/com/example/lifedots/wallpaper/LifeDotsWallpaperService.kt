@@ -128,6 +128,13 @@ class LifeDotsWallpaperService : WallpaperService() {
             strokeCap = Paint.Cap.ROUND
             color = 0xFF2D75A8.toInt()
         }
+        // Per-event paints — color is set per draw from the event's color.
+        private val umrEventGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val umrEventDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val umrEventCrossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
         private val umrCounterTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
             isSubpixelText = true
@@ -1084,29 +1091,37 @@ class LifeDotsWallpaperService : WallpaperService() {
                 }
             }
 
-            // Event markers — one filled/X marker per event at its target-week
-            // cell, in the event's chosen colour. Past events show on the grid
-            // too (history); future events also get a "weeks remaining" line
-            // under the grid (rendered below, before the optional footer).
-            val eventCellsAndColors = mutableListOf<Triple<Float, Float, Int>>()
+            // Event markers — glow halo + solid filled circle in the event's
+            // colour at its target-week cell. In X-mode, an extra white X
+            // stroke is drawn on top of the solid fill so the marker reads
+            // as both "this is an event" AND "X-mode active" without the
+            // underlying white empty-dot bleeding through.
             if (settings.eventSettings.enabled && birthdayMs != 0L) {
+                val eventGlowBlur = BlurMaskFilter(layout.dotSizePx * 1.6f, BlurMaskFilter.Blur.NORMAL)
                 for (event in settings.eventSettings.events) {
                     val cell = weekIndexFor(birthdayMs, event.targetDate)
                     if (cell < 0) continue
                     val (cx, cy) = UmrLayoutCompute.cellCenter(layout, cell)
-                    umrFilledPaint.color = event.color
-                    umrFilledPaint.alpha = 255
-                    umrCrossPaint.color = event.color
-                    umrCrossPaint.alpha = 255
-                    umrCrossPaint.strokeWidth = layout.dotSizePx * 0.28f
+                    // 1. Glow halo
+                    umrEventGlowPaint.color = event.color
+                    umrEventGlowPaint.alpha = 150
+                    umrEventGlowPaint.maskFilter = eventGlowBlur
+                    canvas.drawCircle(cx, cy, glowRadius, umrEventGlowPaint)
+                    // 2. Solid filled circle in the event colour — replaces any
+                    //    underlying empty/filled cell so no white shows through.
+                    umrEventDotPaint.color = event.color
+                    umrEventDotPaint.alpha = 255
+                    umrEventDotPaint.maskFilter = null
+                    canvas.drawCircle(cx, cy, parentR, umrEventDotPaint)
+                    // 3. In X-mode, overlay a contrasting white X on top.
                     if (isX) {
-                        val s = parentR * 0.95f
-                        canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrCrossPaint)
-                        canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrCrossPaint)
-                    } else {
-                        canvas.drawCircle(cx, cy, parentR, umrFilledPaint)
+                        umrEventCrossPaint.color = 0xFFFFFFFF.toInt()
+                        umrEventCrossPaint.alpha = 235
+                        umrEventCrossPaint.strokeWidth = layout.dotSizePx * 0.20f
+                        val s = parentR * 0.55f
+                        canvas.drawLine(cx - s, cy - s, cx + s, cy + s, umrEventCrossPaint)
+                        canvas.drawLine(cx - s, cy + s, cx + s, cy - s, umrEventCrossPaint)
                     }
-                    eventCellsAndColors.add(Triple(cx, cy, event.color))
                 }
             }
 

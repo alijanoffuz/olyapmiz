@@ -249,7 +249,7 @@ data class UmrSettings(
 )
 
 data class WallpaperSettings(
-    val theme: ThemeOption = ThemeOption.DARK,
+    val theme: ThemeOption = ThemeOption.AMOLED,
     val dotSize: DotSize = DotSize.MEDIUM,
     val dotShape: DotShape = DotShape.CIRCLE,
     val gridDensity: GridDensity = GridDensity.COMPACT,
@@ -527,7 +527,7 @@ class LifeDotsPreferences(context: Context) {
         val visualTheme = VisualTheme.valueOf(prefs.getString(KEY_VISUAL_THEME, VisualTheme.CLASSIC.name) ?: VisualTheme.CLASSIC.name)
 
         return WallpaperSettings(
-            theme = ThemeOption.valueOf(prefs.getString(KEY_THEME, ThemeOption.DARK.name) ?: ThemeOption.DARK.name),
+            theme = ThemeOption.valueOf(prefs.getString(KEY_THEME, ThemeOption.AMOLED.name) ?: ThemeOption.AMOLED.name),
             dotSize = DotSize.valueOf(prefs.getString(KEY_DOT_SIZE, DotSize.MEDIUM.name) ?: DotSize.MEDIUM.name),
             dotShape = DotShape.valueOf(prefs.getString(KEY_DOT_SHAPE, DotShape.CIRCLE.name) ?: DotShape.CIRCLE.name),
             gridDensity = GridDensity.valueOf(prefs.getString(KEY_GRID_DENSITY, GridDensity.COMPACT.name) ?: GridDensity.COMPACT.name),
