@@ -64,7 +64,7 @@ data class ViewModeSettings(
 data class CalendarViewSettings(
     val columnsPerRow: Int = 3,  // 3x4 or 4x3 grid
     val showYearStats: Boolean = true,
-    val mondayFirst: Boolean = false,
+    val mondayFirst: Boolean = true,
     // Highlight the current calendar week with a warm tint and glow on today
     val highlightCurrentWeek: Boolean = true,
     val currentWeekColor: Int = 0xFFFFD54F.toInt(),  // warm yellow
@@ -395,6 +395,16 @@ class LifeDotsPreferences(context: Context) {
             if (!prefs.contains(KEY_UMR_TOTAL_WEEKS)) edit.putInt(KEY_UMR_TOTAL_WEEKS, 4000)
             edit.putInt(KEY_MIGRATION_VERSION, 11).apply()
         }
+        if (stored < 12) {
+            // v12: switch the Yil calendar week-start to Monday for everyone.
+            // The data class default also flips to true; this migration steamrolls
+            // any stored false from before the change. There's no UI surface for
+            // toggling this, so no user choice is being overridden.
+            prefs.edit()
+                .putBoolean(KEY_CALENDAR_MONDAY_FIRST, true)
+                .putInt(KEY_MIGRATION_VERSION, 12)
+                .apply()
+        }
         editor.putInt(KEY_MIGRATION_VERSION, CURRENT_MIGRATION_VERSION).apply()
     }
 
@@ -432,7 +442,7 @@ class LifeDotsPreferences(context: Context) {
         val calendarViewSettings = CalendarViewSettings(
             columnsPerRow = prefs.getInt(KEY_CALENDAR_COLUMNS, 3),
             showYearStats = prefs.getBoolean(KEY_CALENDAR_STATS, true),
-            mondayFirst = prefs.getBoolean(KEY_CALENDAR_MONDAY_FIRST, false),
+            mondayFirst = prefs.getBoolean(KEY_CALENDAR_MONDAY_FIRST, true),
             highlightCurrentWeek = prefs.getBoolean(KEY_CALENDAR_HIGHLIGHT_WEEK, true),
             currentWeekColor = prefs.getInt(KEY_CALENDAR_WEEK_COLOR, 0xFFFFD54F.toInt()),
             eventEnabled = prefs.getBoolean(KEY_CALENDAR_EVENT_ENABLED, false),
@@ -1159,7 +1169,7 @@ class LifeDotsPreferences(context: Context) {
         // saved values (e.g., the rebrand from LifeDots default CONTINUOUS to
         // O'lyapmiz default CALENDAR).
         private const val KEY_MIGRATION_VERSION = "migration_version"
-        private const val CURRENT_MIGRATION_VERSION = 11
+        private const val CURRENT_MIGRATION_VERSION = 12
 
         private const val KEY_THEME = "theme"
         private const val KEY_DOT_SIZE = "dot_size"
