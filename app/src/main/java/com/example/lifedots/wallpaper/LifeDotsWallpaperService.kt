@@ -925,8 +925,12 @@ class LifeDotsWallpaperService : WallpaperService() {
 
             // Stat counter band — 3 columns above the grid.
             run {
-                val bandTop = layout.counterBandTopPx
-                val bandBottom = layout.gridTopPx
+                // User-adjustable shift in % of canvas height — lets users on
+                // phones with overlapping system chrome (Redmi 8 swipe text) push
+                // the band down/up until it clears.
+                val statsShift = canvas.height * (settings.umrSettings.statsBandOffset / 100f)
+                val bandTop = layout.counterBandTopPx + statsShift
+                val bandBottom = layout.gridTopPx + statsShift
                 val bandHeight = (bandBottom - bandTop).coerceAtLeast(1f)
                 val textSize = bandHeight * 0.30f
                 umrCounterTextPaint.textSize = textSize

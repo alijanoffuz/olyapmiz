@@ -238,6 +238,10 @@ data class UmrSettings(
     // Default vertical offset 7% — the 80x52 grid sits a touch lower on the
     // canvas than Yil because the top counter band needs breathing room.
     val position: PositionSettings = PositionSettings(verticalOffset = 7f),
+    // Independent vertical shift for just the stats counter band, in percent
+    // of canvas height. Used on phones where the band collides with the
+    // system clock / swipe-to-unlock text (e.g. Redmi 8). Negative = up.
+    val statsBandOffset: Float = 0f,
 )
 
 data class WallpaperSettings(
@@ -565,6 +569,7 @@ class LifeDotsPreferences(context: Context) {
                     verticalOffset = prefs.getFloat(KEY_UMR_VERTICAL_OFFSET, 7f),
                     scale = prefs.getFloat(KEY_UMR_SCALE, 1.0f),
                 ),
+                statsBandOffset = prefs.getFloat(KEY_UMR_STATS_OFFSET, 0f),
             ),
             soundsEnabled = prefs.getBoolean(KEY_SOUNDS_ENABLED, true),
             vibrationsEnabled = prefs.getBoolean(KEY_VIBRATIONS_ENABLED, true),
@@ -861,6 +866,15 @@ class LifeDotsPreferences(context: Context) {
             umrSettings = current.umrSettings.copy(
                 position = current.umrSettings.position.copy(scale = scale)
             )
+        )
+        notifyWallpaperChanged()
+    }
+
+    fun setUmrStatsBandOffset(offset: Float) {
+        prefs.edit().putFloat(KEY_UMR_STATS_OFFSET, offset).apply()
+        val current = _settingsFlow.value
+        _settingsFlow.value = current.copy(
+            umrSettings = current.umrSettings.copy(statsBandOffset = offset)
         )
         notifyWallpaperChanged()
     }
@@ -1223,6 +1237,7 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_UMR_HORIZONTAL_OFFSET = "umr_horizontal_offset"
         private const val KEY_UMR_VERTICAL_OFFSET = "umr_vertical_offset"
         private const val KEY_UMR_SCALE = "umr_scale"
+        private const val KEY_UMR_STATS_OFFSET = "umr_stats_offset"
 
         // Position Settings keys
         private const val KEY_HORIZONTAL_OFFSET = "horizontal_offset"
