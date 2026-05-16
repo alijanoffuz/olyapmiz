@@ -117,7 +117,9 @@ class MainActivity : ComponentActivity() {
             LifeDotsTheme {
                 val installer = remember { UpdateInstaller(this) }
                 OnboardingScreen(
-                    onSetWallpaper = { openWallpaperPicker() },
+                    onApplyHomeAndLock = { openWallpaperPicker() },
+                    onApplyHomeOnlyLive = { applySnapshotToLockThen(openLive = true) },
+                    onApplyLockOnly = { applySnapshotToLockThen(openLive = false) },
                     onOpenSettings = { openSettings() },
                     onAllowBackground = { requestIgnoreBatteryOptimizations() },
                     onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
@@ -174,6 +176,37 @@ class MainActivity : ComponentActivity() {
         tryStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:$packageName")
         }, "APP_DETAILS_SETTINGS")
+    }
+
+    /**
+     * Renders a snapshot of the current Yil/Umr state and applies it to the
+     * lock screen via WallpaperManager.setBitmap(FLAG_LOCK). If [openLive] is
+     * true, also fires the live-wallpaper picker so the user can pick our
+     * service for the home screen — net result: live on home, today's
+     * static on lock. If false, the home wallpaper is left untouched.
+     *
+     * Note on Android limits: live wallpapers cannot be set to the lock
+     * screen alone via any public API. A still snapshot is the closest a
+     * non-system app can get. The snapshot doesn't auto-refresh — the user
+     * has to re-run "Set as Wallpaper" to update.
+     */
+    private fun applySnapshotToLockThen(openLive: Boolean) {
+        try {
+            val wm = WallpaperManager.getInstance(this)
+            val w = wm.desiredMinimumWidth.coerceAtLeast(resources.displayMetrics.widthPixels)
+            val h = wm.desiredMinimumHeight.coerceAtLeast(resources.displayMetrics.heightPixels)
+            val bitmap = com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h)
+            wm.setBitmap(bitmap, /*visibleCropHint*/ null, /*allowBackup*/ true, WallpaperManager.FLAG_LOCK)
+            Toast.makeText(this, "Lock screen set", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.w("LifeDots", "applySnapshotToLockThen failed", e)
+            Toast.makeText(
+                this,
+                "Couldn't apply to lock screen: ${e.message}",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+        if (openLive) openWallpaperPicker()
     }
 
     private fun openWallpaperPicker() {
@@ -253,7 +286,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun OnboardingScreen(
-    onSetWallpaper: () -> Unit,
+    onApplyHomeAndLock: () -> Unit,
+    onApplyHomeOnlyLive: () -> Unit,
+    onApplyLockOnly: () -> Unit,
     onOpenSettings: () -> Unit,
     onAllowBackground: () -> Unit,
     onOpenSamsungNeverSleeping: () -> Unit,
@@ -268,6 +303,7 @@ fun OnboardingScreen(
     var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
     var pendingInstallApk by remember { mutableStateOf<File?>(null) }
     var pendingInstallInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var showApplyDialog by remember { mutableStateOf(false) }
 
     fun handleInstall(apk: File) {
         val info = when (val state = updateState) {
@@ -465,7 +501,7 @@ fun OnboardingScreen(
                 icon = HomeIcon.Picture,
                 onClick = {
                     feedback.click()
-                    onSetWallpaper()
+                    showApplyDialog = true
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -512,6 +548,136 @@ fun OnboardingScreen(
                     .weight(1f),
                 gold = gold,
                 large = true
+            )
+        }
+
+        if (showApplyDialog) {
+            ApplyWallpaperDialog(
+                gold = gold,
+                onDismiss = { showApplyDialog = false },
+                onBoth = {
+                    showApplyDialog = false
+                    onApplyHomeAndLock()
+                },
+                onHomeOnly = {
+                    showApplyDialog = false
+                    onApplyHomeOnlyLive()
+                },
+                onLockOnly = {
+                    showApplyDialog = false
+                    onApplyLockOnly()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ApplyWallpaperDialog(
+    gold: Color,
+    onDismiss: () -> Unit,
+    onBoth: () -> Unit,
+    onHomeOnly: () -> Unit,
+    onLockOnly: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF0A0906))
+                .border(
+                    BorderStroke(1.dp, gold.copy(alpha = 0.45f)),
+                    RoundedCornerShape(20.dp),
+                )
+                .padding(horizontal = 20.dp, vertical = 22.dp)
+        ) {
+            Column {
+                Text(
+                    text = "Apply where?",
+                    color = gold,
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Live wallpaper covers both screens by default. Android does not allow a live wallpaper on the lock screen alone, so Lock-only sets today’s static snapshot instead.",
+                    color = Color(0xC8EDE8DE),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                ApplyOptionRow(
+                    title = "Lock & Home screen",
+                    subtitle = "Live wallpaper on both",
+                    gold = gold,
+                    primary = true,
+                    onClick = onBoth,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                ApplyOptionRow(
+                    title = "Home screen only",
+                    subtitle = "Live on home, today’s snapshot frozen on lock",
+                    gold = gold,
+                    onClick = onHomeOnly,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                ApplyOptionRow(
+                    title = "Lock screen only",
+                    subtitle = "Today’s static snapshot – home stays untouched",
+                    gold = gold,
+                    onClick = onLockOnly,
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onDismiss)
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Cancel",
+                        color = gold.copy(alpha = 0.75f),
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApplyOptionRow(
+    title: String,
+    subtitle: String,
+    gold: Color,
+    onClick: () -> Unit,
+    primary: Boolean = false,
+) {
+    val shape = RoundedCornerShape(13.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (primary) Color(0xFF14110B) else Color(0x14FFFFFF))
+            .border(BorderStroke(1.dp, gold.copy(alpha = if (primary) 0.55f else 0.30f)), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Column {
+            Text(
+                text = title,
+                color = gold,
+                fontFamily = FontFamily.Serif,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xC0EDE8DE),
+                fontSize = 12.sp,
             )
         }
     }
