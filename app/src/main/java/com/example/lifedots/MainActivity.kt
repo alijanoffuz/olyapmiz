@@ -206,7 +206,7 @@ class MainActivity : ComponentActivity() {
                 com.example.lifedots.preferences.TopViewMode.YIL
             } else null
             val bitmap = engine?.renderToBitmap(w, h, forceMode)
-                ?: com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h)
+                ?: com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h, forceMode)
             wm.setBitmap(bitmap, /*visibleCropHint*/ null, /*allowBackup*/ true, which)
             val target = when (which) {
                 WallpaperManager.FLAG_LOCK -> "Lock screen updated"

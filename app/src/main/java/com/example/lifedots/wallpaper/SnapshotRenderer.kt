@@ -29,7 +29,12 @@ import com.example.lifedots.preferences.currentEffectiveMode
  */
 object SnapshotRenderer {
 
-    fun render(context: Context, width: Int, height: Int): Bitmap {
+    fun render(
+        context: Context,
+        width: Int,
+        height: Int,
+        forceMode: TopViewMode? = null,
+    ): Bitmap {
         val prefs = LifeDotsPreferences.getInstance(context)
         val settings = prefs.settings
         val now = System.currentTimeMillis()
@@ -38,13 +43,126 @@ object SnapshotRenderer {
 
         canvas.drawColor(themeBackground(settings))
 
-        val mode = currentEffectiveMode(now, settings)
-        if (mode == TopViewMode.UMR && settings.umrSettings.birthdayEpochMs != 0L) {
-            drawUmrSnapshot(canvas, settings, width, height, now)
-        } else {
-            drawTitleFallback(canvas, settings, width, height)
+        val mode = forceMode ?: currentEffectiveMode(now, settings)
+        when (mode) {
+            TopViewMode.UMR -> {
+                if (settings.umrSettings.birthdayEpochMs != 0L) {
+                    drawUmrSnapshot(canvas, settings, width, height, now)
+                } else {
+                    drawTitleFallback(canvas, settings, width, height)
+                }
+            }
+            TopViewMode.YIL -> drawYilSnapshot(canvas, settings, width, height, now)
         }
         return bitmap
+    }
+
+    /**
+     * Minimal Yil calendar snapshot. Mirrors the layout math of
+     * CalendarLayout / drawCalendarView, but only draws the 12-month dot
+     * grid with past / today / future colouring. Skips stats line, goal
+     * countdown, and current-week tint.
+     */
+    private fun drawYilSnapshot(
+        canvas: Canvas,
+        settings: WallpaperSettings,
+        widthPx: Int,
+        heightPx: Int,
+        now: Long,
+    ) {
+        val layout = CalendarLayout.compute(
+            widthPx = widthPx,
+            heightPx = heightPx,
+            topOffsetPx = 0f,
+            bottomOffsetPx = 0f,
+            systemSafeInsetTopPx = 0,
+            systemSafeInsetBottomPx = 0,
+            systemSafeInsetLeftPx = 0,
+            systemSafeInsetRightPx = 0,
+        )
+
+        val cols = settings.calendarViewSettings.columnsPerRow.coerceIn(2, 4)
+        val rows = (12 + cols - 1) / cols
+
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+        val year = cal.get(java.util.Calendar.YEAR)
+        val todayMonth = cal.get(java.util.Calendar.MONTH)
+        val todayDay = cal.get(java.util.Calendar.DAY_OF_MONTH)
+        val mondayFirst = settings.calendarViewSettings.mondayFirst
+
+        // Solve dotSize that fits both width and height.
+        val gapRatio = layout.dotGapRatio
+        val marginRatio = layout.monthMarginRatio
+        val availWidth = widthPx - 2f * layout.paddingXPx
+        val availHeight = (layout.statsBottomBaselinePx - layout.safeTopPx).coerceAtLeast(1f)
+
+        // Per-month grid: 7 cols × 6 rows of dots.
+        val perRowDotsW = 7 + 6 * gapRatio
+        val perColDotsH = 6 + 5 * gapRatio
+        val widthDenom = cols * perRowDotsW + (cols - 1) * marginRatio
+        val heightDenom = rows * perColDotsH + (rows - 1) * marginRatio
+        val dotSize = minOf(
+            availWidth / widthDenom,
+            availHeight / heightDenom,
+            layout.dotSizeCapPx,
+        ).coerceAtLeast(1f)
+        val dotGap = dotSize * gapRatio
+        val monthBoxW = 7 * dotSize + 6 * dotGap
+        val monthBoxH = 6 * dotSize + 5 * dotGap
+        val monthMargin = dotSize * marginRatio
+
+        val gridLeft = layout.paddingXPx + (availWidth - (cols * monthBoxW + (cols - 1) * monthMargin)) / 2f
+        val gridTop = layout.safeTopPx
+
+        val filled = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = themeFilledDot(settings)
+            alpha = (settings.filledDotAlpha * 255f).toInt().coerceIn(0, 255)
+        }
+        val empty = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = themeEmptyDot(settings)
+            alpha = (settings.emptyDotAlpha * 255f).toInt().coerceIn(0, 255)
+        }
+        val today = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = themeTodayDot(settings)
+            alpha = 255
+        }
+        val r = dotSize / 2f
+
+        for (monthIdx in 0 until 12) {
+            val mRow = monthIdx / cols
+            val mCol = monthIdx % cols
+            val boxLeft = gridLeft + mCol * (monthBoxW + monthMargin)
+            val boxTop = gridTop + mRow * (monthBoxH + monthMargin)
+
+            // First day weekday for this month, Calendar-style (1 = Sunday … 7 = Saturday).
+            cal.set(year, monthIdx, 1)
+            val firstWeekday = cal.get(java.util.Calendar.DAY_OF_WEEK)
+            val daysInMonth = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+
+            // Offset: how many empty cells before day 1.
+            val offset = if (mondayFirst) {
+                ((firstWeekday + 5) % 7)  // Mon=0, Sun=6
+            } else {
+                (firstWeekday - 1)        // Sun=0, Sat=6
+            }
+
+            for (day in 1..daysInMonth) {
+                val cellIdx = offset + (day - 1)
+                val weekCol = cellIdx % 7
+                val weekRow = cellIdx / 7
+                if (weekRow >= 6) break  // overflow guard
+
+                val cx = boxLeft + weekCol * (dotSize + dotGap) + r
+                val cy = boxTop + weekRow * (dotSize + dotGap) + r
+
+                val paint = when {
+                    monthIdx == todayMonth && day == todayDay -> today
+                    monthIdx < todayMonth || (monthIdx == todayMonth && day < todayDay) -> filled
+                    else -> empty
+                }
+                canvas.drawCircle(cx, cy, r, paint)
+            }
+        }
     }
 
     private fun drawUmrSnapshot(
@@ -331,5 +449,12 @@ object SnapshotRenderer {
         ThemeOption.DARK -> Color.parseColor("#3A3A3A")
         ThemeOption.AMOLED -> Color.parseColor("#2A2A2A")
         ThemeOption.CUSTOM -> settings.customColors.emptyDotColor
+    }
+
+    private fun themeTodayDot(settings: WallpaperSettings): Int = when (settings.theme) {
+        ThemeOption.LIGHT -> Color.parseColor("#4A90D9")
+        ThemeOption.DARK -> Color.parseColor("#5BA0E9")
+        ThemeOption.AMOLED -> Color.parseColor("#6AB0F9")
+        ThemeOption.CUSTOM -> settings.customColors.todayDotColor
     }
 }
