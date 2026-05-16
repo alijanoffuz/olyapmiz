@@ -251,6 +251,9 @@ data class WallpaperSettings(
     val gridDensity: GridDensity = GridDensity.COMPACT,
     val highlightToday: Boolean = true,
     val filledDotAlpha: Float = 1.0f,
+    // Yil-only Y shift for the bottom stats block (day/year counters +
+    // optional goal countdown lines). Parallels umrSettings.statsBandOffset.
+    val yilStatsBandOffset: Float = 0f,
     val emptyDotAlpha: Float = 1.0f,
     val customColors: CustomColors = CustomColors(),
     // Feature settings
@@ -535,6 +538,7 @@ class LifeDotsPreferences(context: Context) {
             gridDensity = enumPref(KEY_GRID_DENSITY, GridDensity.COMPACT),
             highlightToday = prefs.getBoolean(KEY_HIGHLIGHT_TODAY, true),
             filledDotAlpha = prefs.getFloat(KEY_FILLED_DOT_ALPHA, 1.0f),
+            yilStatsBandOffset = prefs.getFloat(KEY_YIL_STATS_OFFSET, 0f),
             emptyDotAlpha = prefs.getFloat(KEY_EMPTY_DOT_ALPHA, 1.0f),
             customColors = customColors,
             dotEffectSettings = dotEffectSettings,
@@ -876,6 +880,12 @@ class LifeDotsPreferences(context: Context) {
         _settingsFlow.value = current.copy(
             umrSettings = current.umrSettings.copy(statsBandOffset = offset)
         )
+        notifyWallpaperChanged()
+    }
+
+    fun setYilStatsBandOffset(offset: Float) {
+        prefs.edit().putFloat(KEY_YIL_STATS_OFFSET, offset).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(yilStatsBandOffset = offset)
         notifyWallpaperChanged()
     }
 
@@ -1238,6 +1248,7 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_UMR_VERTICAL_OFFSET = "umr_vertical_offset"
         private const val KEY_UMR_SCALE = "umr_scale"
         private const val KEY_UMR_STATS_OFFSET = "umr_stats_offset"
+        private const val KEY_YIL_STATS_OFFSET = "yil_stats_offset"
 
         // Position Settings keys
         private const val KEY_HORIZONTAL_OFFSET = "horizontal_offset"

@@ -642,7 +642,10 @@ class LifeDotsWallpaperService : WallpaperService() {
             val paddingX = layout.paddingXPx
             val availableWidth = width - 2 * paddingX
             val safeTop = layout.safeTopPx
-            val statsBottomBaseline = layout.statsBottomBaselinePx
+            // Apply user's Y shift for the bottom stats block (parallels the
+            // Umr stats-band slider).
+            val yilStatsShift = canvas.height * (settings.yilStatsBandOffset / 100f)
+            val statsBottomBaseline = layout.statsBottomBaselinePx + yilStatsShift
             val dotGapRatio = layout.dotGapRatio
             val monthMarginRatio = layout.monthMarginRatio
             val showStats = settings.calendarViewSettings.showYearStats

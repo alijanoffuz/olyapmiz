@@ -524,18 +524,21 @@ internal fun ModernSettingsContent(
                         else preferences.setScale(it)
                     },
                 )
-                if (isUmr) {
-                    val statsOffset = settings.umrSettings.statsBandOffset
-                    ModernOffsetRow(
-                        icon = SettingIcon.Vertical,
-                        title = "Stats Bar Y",
-                        subtitle = "Move just the Me / Mom / Dad row",
-                        value = statsOffset,
-                        valueRange = -25f..40f,
-                        valueText = "${statsOffset.roundToInt()}%",
-                        onValueChange = { preferences.setUmrStatsBandOffset(it) },
-                    )
-                }
+                val statsOffset = if (isUmr) settings.umrSettings.statsBandOffset
+                                  else settings.yilStatsBandOffset
+                ModernOffsetRow(
+                    icon = SettingIcon.Vertical,
+                    title = "Stats Bar Y",
+                    subtitle = if (isUmr) "Move just the Me / Mom / Dad row"
+                               else "Move the bottom day-of-year stats line",
+                    value = statsOffset,
+                    valueRange = -25f..40f,
+                    valueText = "${statsOffset.roundToInt()}%",
+                    onValueChange = {
+                        if (isUmr) preferences.setUmrStatsBandOffset(it)
+                        else preferences.setYilStatsBandOffset(it)
+                    },
+                )
             }
         }
 
