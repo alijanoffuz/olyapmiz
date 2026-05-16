@@ -118,8 +118,8 @@ class MainActivity : ComponentActivity() {
                 val installer = remember { UpdateInstaller(this) }
                 OnboardingScreen(
                     onApplyHomeAndLock = { openWallpaperPicker() },
-                    onApplyHomeOnlyLive = { applySnapshotToLockThen(openLive = true) },
-                    onApplyLockOnly = { applySnapshotToLockThen(openLive = false) },
+                    onApplyHomeOnlyLive = { directApplySnapshot(WallpaperManager.FLAG_LOCK, alsoOpenLive = true) },
+                    onApplyLockOnly = { directApplySnapshot(WallpaperManager.FLAG_LOCK, alsoOpenLive = false) },
                     onOpenSettings = { openSettings() },
                     onAllowBackground = { requestIgnoreBatteryOptimizations() },
                     onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
@@ -179,85 +179,42 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Renders a snapshot of the current Yil/Umr state and hands it to the
-     * system's "Set as wallpaper" picker via Intent.ACTION_ATTACH_DATA.
+     * Renders a static snapshot of the current Yil/Umr state and applies it
+     * directly via WallpaperManager.setBitmap(which) — no system picker, no
+     * chooser detour. Caller picks the [which] target:
+     *  - FLAG_LOCK              → lock screen only (leaves home untouched)
+     *  - FLAG_SYSTEM            → home screen only
+     *  - FLAG_SYSTEM|FLAG_LOCK  → both screens
      *
-     * Why not WallpaperManager.setBitmap(FLAG_LOCK)? On Samsung One UI and
-     * Xiaomi MIUI the OEM customisation service intercepts that call and
-     * silently no-ops it — the toast says "Lock screen set" but the lock
-     * screen never changes. ACTION_ATTACH_DATA opens THEIR own picker,
-     * which has explicit "Apply to Home / Lock / Both" buttons that always
-     * work because the OEM wrote them.
-     *
-     * If [openLive] is true, the live-wallpaper picker is launched right
-     * after, so the user can apply the live to home in a follow-up step.
+     * The SET_WALLPAPER permission (manifest) is required for this call; we
+     * declare it. If [alsoOpenLive] is true, the live-wallpaper picker is
+     * opened right after so the home screen also gets the live wallpaper.
      */
-    private fun applySnapshotToLockThen(openLive: Boolean) {
+    private fun directApplySnapshot(which: Int, alsoOpenLive: Boolean) {
         try {
             val wm = WallpaperManager.getInstance(this)
             val w = wm.desiredMinimumWidth.coerceAtLeast(resources.displayMetrics.widthPixels)
             val h = wm.desiredMinimumHeight.coerceAtLeast(resources.displayMetrics.heightPixels)
             val bitmap = com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h)
-
-            // Persist snapshot under cache/wallpaper/ and expose via FileProvider.
-            val dir = java.io.File(cacheDir, "wallpaper").apply { mkdirs() }
-            val file = java.io.File(dir, "snapshot.png")
-            file.outputStream().use { os ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, os)
+            wm.setBitmap(bitmap, /*visibleCropHint*/ null, /*allowBackup*/ true, which)
+            val target = when (which) {
+                WallpaperManager.FLAG_LOCK -> "Lock screen updated"
+                WallpaperManager.FLAG_SYSTEM -> "Home screen updated"
+                else -> "Wallpaper updated"
             }
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                this, "$packageName.fileprovider", file,
-            )
-
-            // Best-effort silent set first — works on stock Android / Pixel.
-            // The OEM picker fallback below handles Samsung / MIUI where this
-            // call returns success but does nothing.
-            var silentLooksOk = false
-            runCatching {
-                wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
-                silentLooksOk = true
-            }.onFailure {
-                Log.w("LifeDots", "setBitmap(FLAG_LOCK) threw", it)
-            }
-
-            // Prefer Android's official "crop + set wallpaper from URI" intent.
-            // On Samsung and MIUI it lands in the OEM wallpaper-set activity that
-            // exposes Lock / Home / Both buttons. Returns null on devices that
-            // don't ship a wallpaper cropper.
-            val cropIntent = runCatching { wm.getCropAndSetWallpaperIntent(uri) }.getOrNull()
-                ?.apply {
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            val started = cropIntent?.let { tryStart(it, "CROP_AND_SET_WALLPAPER") } ?: false
-            if (!started && !silentLooksOk) {
-                // Last resort: ACTION_ATTACH_DATA with explicit MIME — opens the
-                // generic system "save image as wallpaper" sheet.
-                val attach = Intent(Intent.ACTION_ATTACH_DATA).apply {
-                    setDataAndType(uri, "image/png")
-                    putExtra("mimeType", "image/png")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                if (!tryStart(attach, "ATTACH_DATA_WALLPAPER")) {
-                    Toast.makeText(
-                        this,
-                        "Couldn't open the wallpaper picker.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            } else if (silentLooksOk) {
-                Toast.makeText(this, "Lock screen updated", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            Log.w("LifeDots", "applySnapshotToLockThen failed", e)
+            Toast.makeText(this, target, Toast.LENGTH_SHORT).show()
+        } catch (e: SecurityException) {
+            Log.w("LifeDots", "setBitmap denied", e)
             Toast.makeText(
                 this,
-                "Couldn't apply to lock screen: ${e.message}",
+                "Permission denied — open Settings → Apps → O'lyapmiz → Permissions and allow Wallpaper.",
                 Toast.LENGTH_LONG,
             ).show()
+        } catch (e: Exception) {
+            Log.w("LifeDots", "directApplySnapshot failed", e)
+            Toast.makeText(this, "Couldn't apply wallpaper: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        if (openLive) openWallpaperPicker()
+        if (alsoOpenLive) openWallpaperPicker()
     }
 
     private fun openWallpaperPicker() {
