@@ -220,31 +220,34 @@ class MainActivity : ComponentActivity() {
                 Log.w("LifeDots", "setBitmap(FLAG_LOCK) threw", it)
             }
 
-            val attach = Intent(Intent.ACTION_ATTACH_DATA).apply {
-                setDataAndType(uri, "image/png")
-                putExtra("mimeType", "image/png")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            val chooser = Intent.createChooser(
-                attach,
-                "Set as wallpaper — pick \"Lock screen\""
-            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-
-            if (!tryStart(chooser, "ATTACH_DATA_WALLPAPER")) {
-                // No chooser available — try ACTION_SET_WALLPAPER as a last resort.
-                val direct = Intent("android.intent.action.SET_WALLPAPER").apply {
-                    setDataAndType(uri, "image/png")
+            // Prefer Android's official "crop + set wallpaper from URI" intent.
+            // On Samsung and MIUI it lands in the OEM wallpaper-set activity that
+            // exposes Lock / Home / Both buttons. Returns null on devices that
+            // don't ship a wallpaper cropper.
+            val cropIntent = runCatching { wm.getCropAndSetWallpaperIntent(uri) }.getOrNull()
+                ?.apply {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                if (!tryStart(direct, "SET_WALLPAPER_DIRECT") && !silentLooksOk) {
+            val started = cropIntent?.let { tryStart(it, "CROP_AND_SET_WALLPAPER") } ?: false
+            if (!started && !silentLooksOk) {
+                // Last resort: ACTION_ATTACH_DATA with explicit MIME — opens the
+                // generic system "save image as wallpaper" sheet.
+                val attach = Intent(Intent.ACTION_ATTACH_DATA).apply {
+                    setDataAndType(uri, "image/png")
+                    putExtra("mimeType", "image/png")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (!tryStart(attach, "ATTACH_DATA_WALLPAPER")) {
                     Toast.makeText(
                         this,
                         "Couldn't open the wallpaper picker.",
                         Toast.LENGTH_LONG,
                     ).show()
                 }
+            } else if (silentLooksOk) {
+                Toast.makeText(this, "Lock screen updated", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.w("LifeDots", "applySnapshotToLockThen failed", e)
