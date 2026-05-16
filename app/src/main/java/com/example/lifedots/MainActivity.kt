@@ -117,9 +117,7 @@ class MainActivity : ComponentActivity() {
             LifeDotsTheme {
                 val installer = remember { UpdateInstaller(this) }
                 OnboardingScreen(
-                    onApplyHomeAndLock = { openWallpaperPicker() },
-                    onApplyHomeOnlyLive = { directApplySnapshot(WallpaperManager.FLAG_LOCK, alsoOpenLive = true) },
-                    onApplyLockOnly = { directApplySnapshot(WallpaperManager.FLAG_LOCK, alsoOpenLive = false) },
+                    onSetWallpaper = { openWallpaperPicker() },
                     onOpenSettings = { openSettings() },
                     onAllowBackground = { requestIgnoreBatteryOptimizations() },
                     onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
@@ -176,56 +174,6 @@ class MainActivity : ComponentActivity() {
         tryStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:$packageName")
         }, "APP_DETAILS_SETTINGS")
-    }
-
-    /**
-     * Renders a static snapshot of the current Yil/Umr state and applies it
-     * directly via WallpaperManager.setBitmap(which) — no system picker, no
-     * chooser detour. Caller picks the [which] target:
-     *  - FLAG_LOCK              → lock screen only (leaves home untouched)
-     *  - FLAG_SYSTEM            → home screen only
-     *  - FLAG_SYSTEM|FLAG_LOCK  → both screens
-     *
-     * The SET_WALLPAPER permission (manifest) is required for this call; we
-     * declare it. If [alsoOpenLive] is true, the live-wallpaper picker is
-     * opened right after so the home screen also gets the live wallpaper.
-     */
-    private fun directApplySnapshot(which: Int, alsoOpenLive: Boolean) {
-        try {
-            val wm = WallpaperManager.getInstance(this)
-            val w = wm.desiredMinimumWidth.coerceAtLeast(resources.displayMetrics.widthPixels)
-            val h = wm.desiredMinimumHeight.coerceAtLeast(resources.displayMetrics.heightPixels)
-
-            // Prefer rendering through the live engine so the snapshot is a
-            // pixel-perfect frame of what the user already sees. Force Yil for
-            // lock screen — that's the calendar view the user explicitly
-            // requested for lock. Falls back to the standalone SnapshotRenderer
-            // when no engine is running (first-time install).
-            val engine = com.example.lifedots.wallpaper.LifeDotsWallpaperService.currentEngine
-            val forceMode = if (which and WallpaperManager.FLAG_LOCK != 0) {
-                com.example.lifedots.preferences.TopViewMode.YIL
-            } else null
-            val bitmap = engine?.renderToBitmap(w, h, forceMode)
-                ?: com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h, forceMode)
-            wm.setBitmap(bitmap, /*visibleCropHint*/ null, /*allowBackup*/ true, which)
-            val target = when (which) {
-                WallpaperManager.FLAG_LOCK -> "Lock screen updated"
-                WallpaperManager.FLAG_SYSTEM -> "Home screen updated"
-                else -> "Wallpaper updated"
-            }
-            Toast.makeText(this, target, Toast.LENGTH_SHORT).show()
-        } catch (e: SecurityException) {
-            Log.w("LifeDots", "setBitmap denied", e)
-            Toast.makeText(
-                this,
-                "Permission denied — open Settings → Apps → O'lyapmiz → Permissions and allow Wallpaper.",
-                Toast.LENGTH_LONG,
-            ).show()
-        } catch (e: Exception) {
-            Log.w("LifeDots", "directApplySnapshot failed", e)
-            Toast.makeText(this, "Couldn't apply wallpaper: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-        if (alsoOpenLive) openWallpaperPicker()
     }
 
     private fun openWallpaperPicker() {
@@ -305,9 +253,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun OnboardingScreen(
-    onApplyHomeAndLock: () -> Unit,
-    onApplyHomeOnlyLive: () -> Unit,
-    onApplyLockOnly: () -> Unit,
+    onSetWallpaper: () -> Unit,
     onOpenSettings: () -> Unit,
     onAllowBackground: () -> Unit,
     onOpenSamsungNeverSleeping: () -> Unit,
@@ -322,7 +268,6 @@ fun OnboardingScreen(
     var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
     var pendingInstallApk by remember { mutableStateOf<File?>(null) }
     var pendingInstallInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-    var showApplyDialog by remember { mutableStateOf(false) }
 
     fun handleInstall(apk: File) {
         val info = when (val state = updateState) {
@@ -520,7 +465,7 @@ fun OnboardingScreen(
                 icon = HomeIcon.Picture,
                 onClick = {
                     feedback.click()
-                    showApplyDialog = true
+                    onSetWallpaper()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -570,137 +515,9 @@ fun OnboardingScreen(
             )
         }
 
-        if (showApplyDialog) {
-            ApplyWallpaperDialog(
-                gold = gold,
-                onDismiss = { showApplyDialog = false },
-                onBoth = {
-                    showApplyDialog = false
-                    onApplyHomeAndLock()
-                },
-                onHomeOnly = {
-                    showApplyDialog = false
-                    onApplyHomeOnlyLive()
-                },
-                onLockOnly = {
-                    showApplyDialog = false
-                    onApplyLockOnly()
-                },
-            )
-        }
     }
 }
 
-@Composable
-private fun ApplyWallpaperDialog(
-    gold: Color,
-    onDismiss: () -> Unit,
-    onBoth: () -> Unit,
-    onHomeOnly: () -> Unit,
-    onLockOnly: () -> Unit,
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF0A0906))
-                .border(
-                    BorderStroke(1.dp, gold.copy(alpha = 0.45f)),
-                    RoundedCornerShape(20.dp),
-                )
-                .padding(horizontal = 20.dp, vertical = 22.dp)
-        ) {
-            Column {
-                Text(
-                    text = "Apply where?",
-                    color = gold,
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Live wallpaper covers both screens by default. Android does not allow a live wallpaper on the lock screen alone, so Lock-only sets today’s static snapshot instead.",
-                    color = Color(0xC8EDE8DE),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-                ApplyOptionRow(
-                    title = "Lock & Home screen",
-                    subtitle = "Live wallpaper on both",
-                    gold = gold,
-                    primary = true,
-                    onClick = onBoth,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                ApplyOptionRow(
-                    title = "Home screen only",
-                    subtitle = "Live on home, today’s snapshot frozen on lock",
-                    gold = gold,
-                    onClick = onHomeOnly,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                ApplyOptionRow(
-                    title = "Lock screen only",
-                    subtitle = "Today’s static snapshot – home stays untouched",
-                    gold = gold,
-                    onClick = onLockOnly,
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable(onClick = onDismiss)
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Cancel",
-                        color = gold.copy(alpha = 0.75f),
-                        fontSize = 14.sp,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ApplyOptionRow(
-    title: String,
-    subtitle: String,
-    gold: Color,
-    onClick: () -> Unit,
-    primary: Boolean = false,
-) {
-    val shape = RoundedCornerShape(13.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(if (primary) Color(0xFF14110B) else Color(0x14FFFFFF))
-            .border(BorderStroke(1.dp, gold.copy(alpha = if (primary) 0.55f else 0.30f)), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Column {
-            Text(
-                text = title,
-                color = gold,
-                fontFamily = FontFamily.Serif,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = subtitle,
-                color = Color(0xC0EDE8DE),
-                fontSize = 12.sp,
-            )
-        }
-    }
-}
 
 private enum class HomeIcon {
     Settings,

@@ -3,8 +3,4 @@
     <!-- The updater writes the downloaded APK here; FileProvider exposes it as
          a content:// URI that the system installer can read. -->
     <cache-path name="updates" path="updates/" />
-    <!-- Wallpaper snapshots handed off to the system's "Set as wallpaper"
-         picker via Intent.ACTION_ATTACH_DATA. Needed because Samsung One UI
-         and MIUI silently ignore WallpaperManager.setBitmap(FLAG_LOCK). -->
-    <cache-path name="wallpaper" path="wallpaper/" />
 </paths>
