@@ -1,5 +1,6 @@
 package com.example.lifedots.wallpaper
 
+import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -59,6 +60,19 @@ class LifeDotsWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine {
         return LifeDotsEngine()
+    }
+
+    companion object {
+        /**
+         * Static reference to the live engine so foreign callers (the in-app
+         * "Set as wallpaper → Lock screen only" path) can ask the engine
+         * itself to render a Bitmap snapshot — guaranteeing the snapshot
+         * matches what users see on their wallpaper exactly.
+         *
+         * Populated in Engine.onCreate; cleared in onDestroy.
+         */
+        @Volatile
+        var currentEngine: LifeDotsWallpaperService.LifeDotsEngine? = null
     }
 
     inner class LifeDotsEngine : Engine() {
@@ -205,6 +219,7 @@ class LifeDotsWallpaperService : WallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
+            currentEngine = this
             LifeDotsPreferences.addWallpaperChangeListener(settingsChangeListener)
             autoSwitchRotator.refresh(preferences.settings)
             // Schedule the daily refresh alarm the first time the wallpaper runs, so
@@ -217,12 +232,30 @@ class LifeDotsWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             super.onDestroy()
+            if (currentEngine === this) currentEngine = null
             LifeDotsPreferences.removeWallpaperChangeListener(settingsChangeListener)
             autoSwitchRotator.cancel()
             KeepAliveService.stop(applicationContext)
             handler.removeCallbacks(animationRunner)
             handler.removeCallbacks(fluidRunner)
             handler.removeCallbacksAndMessages(null)
+        }
+
+        /**
+         * Renders the current wallpaper state to a Bitmap. Lets foreign callers
+         * (the lock-screen-only flow in MainActivity) get a snapshot that
+         * matches what the user sees on their wallpaper EXACTLY, since we
+         * reuse this engine's own draw path.
+         *
+         * If [forceMode] is supplied, the snapshot is rendered in that mode
+         * regardless of the current topViewMode — used so "Lock screen only"
+         * can always produce a Yil calendar snapshot per user request.
+         */
+        fun renderToBitmap(width: Int, height: Int, forceMode: TopViewMode? = null): Bitmap {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawDots(canvas, forceMode)
+            return bitmap
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -316,7 +349,7 @@ class LifeDotsWallpaperService : WallpaperService() {
                     if (currentDay != lastDrawnDay && lastDrawnDay != -1) {
                         android.util.Log.i("LifeDots", "Day rolled over: $lastDrawnDay → $currentDay")
                     }
-                    drawDots(canvas)
+                    drawDots(canvas, forceMode = null)
                     lastDrawnDay = currentDay
                 }
             } finally {
@@ -330,14 +363,17 @@ class LifeDotsWallpaperService : WallpaperService() {
             }
         }
 
-        private fun drawDots(canvas: Canvas) {
+        private fun drawDots(canvas: Canvas, forceMode: TopViewMode? = null) {
             val settings = preferences.settings
             val colors = getThemeColors(settings)
 
             // NEW: top-level mode dispatch. When Umr is active, render the
             // life-in-weeks grid and return; Yil's existing flow is untouched.
+            // If a caller has asked for a specific mode (snapshot path), honour
+            // it instead of the user's currentEffectiveMode.
             val nowMs = System.currentTimeMillis()
-            if (currentEffectiveMode(nowMs, settings) == TopViewMode.UMR) {
+            val effectiveMode = forceMode ?: currentEffectiveMode(nowMs, settings)
+            if (effectiveMode == TopViewMode.UMR) {
                 drawUmrView(canvas, settings, colors, nowMs)
                 return
             }

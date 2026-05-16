@@ -195,7 +195,18 @@ class MainActivity : ComponentActivity() {
             val wm = WallpaperManager.getInstance(this)
             val w = wm.desiredMinimumWidth.coerceAtLeast(resources.displayMetrics.widthPixels)
             val h = wm.desiredMinimumHeight.coerceAtLeast(resources.displayMetrics.heightPixels)
-            val bitmap = com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h)
+
+            // Prefer rendering through the live engine so the snapshot is a
+            // pixel-perfect frame of what the user already sees. Force Yil for
+            // lock screen — that's the calendar view the user explicitly
+            // requested for lock. Falls back to the standalone SnapshotRenderer
+            // when no engine is running (first-time install).
+            val engine = com.example.lifedots.wallpaper.LifeDotsWallpaperService.currentEngine
+            val forceMode = if (which and WallpaperManager.FLAG_LOCK != 0) {
+                com.example.lifedots.preferences.TopViewMode.YIL
+            } else null
+            val bitmap = engine?.renderToBitmap(w, h, forceMode)
+                ?: com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h)
             wm.setBitmap(bitmap, /*visibleCropHint*/ null, /*allowBackup*/ true, which)
             val target = when (which) {
                 WallpaperManager.FLAG_LOCK -> "Lock screen updated"
