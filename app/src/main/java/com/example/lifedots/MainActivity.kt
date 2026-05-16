@@ -179,16 +179,18 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Renders a snapshot of the current Yil/Umr state and applies it to the
-     * lock screen via WallpaperManager.setBitmap(FLAG_LOCK). If [openLive] is
-     * true, also fires the live-wallpaper picker so the user can pick our
-     * service for the home screen — net result: live on home, today's
-     * static on lock. If false, the home wallpaper is left untouched.
+     * Renders a snapshot of the current Yil/Umr state and hands it to the
+     * system's "Set as wallpaper" picker via Intent.ACTION_ATTACH_DATA.
      *
-     * Note on Android limits: live wallpapers cannot be set to the lock
-     * screen alone via any public API. A still snapshot is the closest a
-     * non-system app can get. The snapshot doesn't auto-refresh — the user
-     * has to re-run "Set as Wallpaper" to update.
+     * Why not WallpaperManager.setBitmap(FLAG_LOCK)? On Samsung One UI and
+     * Xiaomi MIUI the OEM customisation service intercepts that call and
+     * silently no-ops it — the toast says "Lock screen set" but the lock
+     * screen never changes. ACTION_ATTACH_DATA opens THEIR own picker,
+     * which has explicit "Apply to Home / Lock / Both" buttons that always
+     * work because the OEM wrote them.
+     *
+     * If [openLive] is true, the live-wallpaper picker is launched right
+     * after, so the user can apply the live to home in a follow-up step.
      */
     private fun applySnapshotToLockThen(openLive: Boolean) {
         try {
@@ -196,8 +198,54 @@ class MainActivity : ComponentActivity() {
             val w = wm.desiredMinimumWidth.coerceAtLeast(resources.displayMetrics.widthPixels)
             val h = wm.desiredMinimumHeight.coerceAtLeast(resources.displayMetrics.heightPixels)
             val bitmap = com.example.lifedots.wallpaper.SnapshotRenderer.render(this, w, h)
-            wm.setBitmap(bitmap, /*visibleCropHint*/ null, /*allowBackup*/ true, WallpaperManager.FLAG_LOCK)
-            Toast.makeText(this, "Lock screen set", Toast.LENGTH_SHORT).show()
+
+            // Persist snapshot under cache/wallpaper/ and expose via FileProvider.
+            val dir = java.io.File(cacheDir, "wallpaper").apply { mkdirs() }
+            val file = java.io.File(dir, "snapshot.png")
+            file.outputStream().use { os ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, os)
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.fileprovider", file,
+            )
+
+            // Best-effort silent set first — works on stock Android / Pixel.
+            // The OEM picker fallback below handles Samsung / MIUI where this
+            // call returns success but does nothing.
+            var silentLooksOk = false
+            runCatching {
+                wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
+                silentLooksOk = true
+            }.onFailure {
+                Log.w("LifeDots", "setBitmap(FLAG_LOCK) threw", it)
+            }
+
+            val attach = Intent(Intent.ACTION_ATTACH_DATA).apply {
+                setDataAndType(uri, "image/png")
+                putExtra("mimeType", "image/png")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(
+                attach,
+                "Set as wallpaper — pick \"Lock screen\""
+            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+
+            if (!tryStart(chooser, "ATTACH_DATA_WALLPAPER")) {
+                // No chooser available — try ACTION_SET_WALLPAPER as a last resort.
+                val direct = Intent("android.intent.action.SET_WALLPAPER").apply {
+                    setDataAndType(uri, "image/png")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (!tryStart(direct, "SET_WALLPAPER_DIRECT") && !silentLooksOk) {
+                    Toast.makeText(
+                        this,
+                        "Couldn't open the wallpaper picker.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         } catch (e: Exception) {
             Log.w("LifeDots", "applySnapshotToLockThen failed", e)
             Toast.makeText(
