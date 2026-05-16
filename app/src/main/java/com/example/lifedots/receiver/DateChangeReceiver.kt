@@ -9,8 +9,12 @@ import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import android.graphics.Bitmap
+import android.graphics.Color
 import com.example.lifedots.preferences.LifeDotsPreferences
+import com.example.lifedots.preferences.WallpaperApplyMode
 import com.example.lifedots.service.KeepAliveService
+import com.example.lifedots.wallpaper.SnapshotRenderer
 import java.util.Calendar
 
 /**
@@ -46,6 +50,7 @@ class DateChangeReceiver : BroadcastReceiver() {
             Intent.ACTION_TIME_CHANGED -> {
                 Log.i("LifeDots", "Date/time changed (${intent.action}) — forcing wallpaper redraw")
                 pokeAutoSwitchRedraw(context)
+                refreshLockSnapshotIfNeeded(context)
                 scheduleDailyAlarm(context)
             }
             ACTION_AUTO_SWITCH_TICK -> {
@@ -86,6 +91,34 @@ class DateChangeReceiver : BroadcastReceiver() {
             prefs.notifyWallpaperChanged()
         } catch (e: Exception) {
             Log.e("LifeDots", "Failed to notify wallpaper change", e)
+        }
+    }
+
+    /**
+     * For users in CALENDAR_LOCK_BLACK_HOME mode, re-render today's snapshot
+     * and push it to FLAG_LOCK so the calendar reflects the new date. Skipped
+     * silently if the user is in BOTH_LIVE mode (the engine handles its own
+     * redraw on the next visibility change).
+     *
+     * Only fires if we previously set a lock-screen bitmap — otherwise we'd
+     * be silently pushing a wallpaper the user never asked for.
+     */
+    private fun refreshLockSnapshotIfNeeded(context: Context) {
+        try {
+            val prefs = LifeDotsPreferences.getInstance(context)
+            if (prefs.settings.applyMode != WallpaperApplyMode.CALENDAR_LOCK_BLACK_HOME) return
+            val wm = WallpaperManager.getInstance(context)
+            val existing = wm.getWallpaperFile(WallpaperManager.FLAG_LOCK) ?: return
+            existing.close()
+            val metrics = context.resources.displayMetrics
+            val snapshot = SnapshotRenderer.render(context, metrics.widthPixels, metrics.heightPixels)
+            val black = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(Color.BLACK)
+            }
+            wm.setBitmap(snapshot, null, true, WallpaperManager.FLAG_LOCK)
+            wm.setBitmap(black, null, true, WallpaperManager.FLAG_SYSTEM)
+        } catch (e: Exception) {
+            Log.w("LifeDots", "Daily lock snapshot refresh failed", e)
         }
     }
 

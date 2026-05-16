@@ -77,6 +77,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.lifedots.preferences.LifeDotsPreferences
+import com.example.lifedots.preferences.WallpaperApplyMode
 import com.example.lifedots.service.KeepAliveService
 import com.example.lifedots.ui.components.rememberUxFeedback
 import com.example.lifedots.ui.theme.LifeDotsTheme
@@ -85,6 +86,7 @@ import com.example.lifedots.updater.UpdateInfo
 import com.example.lifedots.updater.UpdateInstaller
 import com.example.lifedots.updater.UpdateNotifier
 import com.example.lifedots.wallpaper.LifeDotsWallpaperService
+import com.example.lifedots.wallpaper.SnapshotRenderer
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.PI
@@ -113,11 +115,15 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         @Suppress("DEPRECATION")
         window.navigationBarColor = android.graphics.Color.BLACK
+        // If the user opted into "calendar on lock, black on home" mode,
+        // refresh the lock snapshot every time the app opens so the calendar
+        // reflects today's date even when the user hasn't tapped Set again.
+        refreshLockSnapshotIfNeeded()
         setContent {
             LifeDotsTheme {
                 val installer = remember { UpdateInstaller(this) }
                 OnboardingScreen(
-                    onSetWallpaper = { openWallpaperPicker() },
+                    onSetWallpaper = { setAsWallpaper() },
                     onOpenSettings = { openSettings() },
                     onAllowBackground = { requestIgnoreBatteryOptimizations() },
                     onOpenSamsungNeverSleeping = { openSamsungNeverSleeping() },
@@ -174,6 +180,80 @@ class MainActivity : ComponentActivity() {
         tryStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:$packageName")
         }, "APP_DETAILS_SETTINGS")
+    }
+
+    /**
+     * Branch on the user's chosen apply mode:
+     *  - BOTH_LIVE: open the live wallpaper picker (Android paints the engine
+     *    on both screens — the default behaviour).
+     *  - CALENDAR_LOCK_BLACK_HOME: skip the picker entirely; paint today's
+     *    Yil/Umr snapshot to the lock screen and pure black to the home
+     *    screen via WallpaperManager.setBitmap.
+     */
+    private fun setAsWallpaper() {
+        val prefs = LifeDotsPreferences.getInstance(this)
+        when (prefs.settings.applyMode) {
+            WallpaperApplyMode.BOTH_LIVE -> openWallpaperPicker()
+            WallpaperApplyMode.CALENDAR_LOCK_BLACK_HOME -> applyCalendarLockBlackHome()
+        }
+    }
+
+    /**
+     * Paint today's Yil/Umr snapshot onto FLAG_LOCK and a 1x1 black bitmap
+     * onto FLAG_SYSTEM. Sized to the device's actual display so the
+     * snapshot doesn't get cropped or stretched on the lock screen.
+     */
+    private fun applyCalendarLockBlackHome() {
+        try {
+            val wm = WallpaperManager.getInstance(this)
+            val metrics = resources.displayMetrics
+            val width = metrics.widthPixels
+            val height = metrics.heightPixels
+            val snapshot = SnapshotRenderer.render(this, width, height)
+            val black = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888).apply {
+                eraseColor(android.graphics.Color.BLACK)
+            }
+            wm.setBitmap(snapshot, null, true, WallpaperManager.FLAG_LOCK)
+            wm.setBitmap(black, null, true, WallpaperManager.FLAG_SYSTEM)
+            Toast.makeText(this, "Lock screen updated", Toast.LENGTH_SHORT).show()
+        } catch (e: SecurityException) {
+            Log.w("LifeDots", "applyCalendarLockBlackHome: SET_WALLPAPER denied", e)
+            Toast.makeText(
+                this,
+                "Couldn't update wallpaper — check permissions",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            Log.w("LifeDots", "applyCalendarLockBlackHome: failed", e)
+            Toast.makeText(this, "Couldn't update wallpaper", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * If the user is in CALENDAR_LOCK_BLACK_HOME mode and the current lock
+     * wallpaper is one we set ourselves, regenerate it for today's date.
+     *
+     * The "did we set this" check is implicit: we only refresh if applyMode
+     * is the bitmap mode AND a bitmap was previously written. setBitmap is
+     * idempotent — re-running it on top of our own bitmap just replaces it
+     * with today's snapshot. We skip if mode == BOTH_LIVE so we don't
+     * stomp on a live wallpaper the user might be running.
+     */
+    private fun refreshLockSnapshotIfNeeded() {
+        val prefs = LifeDotsPreferences.getInstance(this)
+        if (prefs.settings.applyMode != WallpaperApplyMode.CALENDAR_LOCK_BLACK_HOME) return
+        try {
+            val wm = WallpaperManager.getInstance(this)
+            // Only refresh if we previously set a lock-screen bitmap. If the
+            // user has never tapped Set, we don't want to silently push a
+            // wallpaper they didn't ask for.
+            val existing = wm.getWallpaperFile(WallpaperManager.FLAG_LOCK)
+            if (existing == null) return
+            existing.close()
+            applyCalendarLockBlackHome()
+        } catch (e: Exception) {
+            Log.w("LifeDots", "refreshLockSnapshotIfNeeded: failed", e)
+        }
     }
 
     private fun openWallpaperPicker() {

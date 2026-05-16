@@ -108,6 +108,7 @@ import com.example.lifedots.preferences.UmrVisualMode
 import com.example.lifedots.preferences.TreeStyle
 import com.example.lifedots.preferences.ViewMode
 import com.example.lifedots.preferences.VisualTheme
+import com.example.lifedots.preferences.WallpaperApplyMode
 import com.example.lifedots.preferences.WallpaperSettings
 import com.example.lifedots.ui.components.DateNumberInputs
 import com.example.lifedots.ui.components.GoalEditorDialog
@@ -317,6 +318,33 @@ internal fun ModernSettingsContent(
                     preferences.setAutoSwitchIntervalMs(ms)
                 },
             )
+        }
+
+        item {
+            ModernSectionTitle("WALLPAPER APPLY")
+            ModernPanelCard {
+                val isLockOnly = settings.applyMode == WallpaperApplyMode.CALENDAR_LOCK_BLACK_HOME
+                ModernSettingRow(
+                    icon = SettingIcon.Phone,
+                    title = "Lock screen only",
+                    subtitle = if (isLockOnly)
+                        "Calendar on lock, black home — refreshes daily"
+                    else
+                        "Use the live wallpaper on both screens",
+                    trailing = {
+                        ModernSwitch(
+                            checked = isLockOnly,
+                            onCheckedChange = { wantLockOnly ->
+                                feedback.confirm()
+                                preferences.setApplyMode(
+                                    if (wantLockOnly) WallpaperApplyMode.CALENDAR_LOCK_BLACK_HOME
+                                    else WallpaperApplyMode.BOTH_LIVE
+                                )
+                            },
+                        )
+                    },
+                )
+            }
         }
 
         if (settings.topViewMode == TopViewMode.UMR) {

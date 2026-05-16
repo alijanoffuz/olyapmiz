@@ -219,6 +219,14 @@ enum class TopViewMode { YIL, UMR }
 
 enum class UmrVisualMode { DOTS, X_MARKS }
 
+// How the user wants "Set as Wallpaper" to behave.
+//   BOTH_LIVE: the standard path — the live wallpaper engine paints Yil/Umr
+//     on both home and lock screen (Android's default for a live wallpaper).
+//   CALENDAR_LOCK_BLACK_HOME: paint today's Yil/Umr snapshot onto the lock
+//     screen and pure black onto the home screen. Refreshed at midnight + on
+//     app open so the lock screen calendar always shows the current day.
+enum class WallpaperApplyMode { BOTH_LIVE, CALENDAR_LOCK_BLACK_HOME }
+
 data class AutoSwitchSettings(
     val enabled: Boolean = false,
     val intervalMs: Long = 5_000L,
@@ -275,6 +283,8 @@ data class WallpaperSettings(
     val umrSettings: UmrSettings = UmrSettings(),
     val soundsEnabled: Boolean = true,
     val vibrationsEnabled: Boolean = true,
+    // Branch for the "Set as Wallpaper" tap. See WallpaperApplyMode docs.
+    val applyMode: WallpaperApplyMode = WallpaperApplyMode.BOTH_LIVE,
 )
 
 /**
@@ -577,6 +587,7 @@ class LifeDotsPreferences(context: Context) {
             ),
             soundsEnabled = prefs.getBoolean(KEY_SOUNDS_ENABLED, true),
             vibrationsEnabled = prefs.getBoolean(KEY_VIBRATIONS_ENABLED, true),
+            applyMode = enumPref(KEY_APPLY_MODE, WallpaperApplyMode.BOTH_LIVE),
         )
     }
 
@@ -1181,6 +1192,11 @@ class LifeDotsPreferences(context: Context) {
         _settingsFlow.value = current.copy(vibrationsEnabled = enabled)
     }
 
+    fun setApplyMode(mode: WallpaperApplyMode) {
+        prefs.edit().putString(KEY_APPLY_MODE, mode.name).apply()
+        _settingsFlow.value = _settingsFlow.value.copy(applyMode = mode)
+    }
+
     fun notifyWallpaperChanged() {
         wallpaperChangeListeners.forEach { it.invoke() }
     }
@@ -1303,6 +1319,10 @@ class LifeDotsPreferences(context: Context) {
         private const val KEY_UMR_LIVED_ALPHA = "umr_lived_alpha"
         private const val KEY_UMR_EMPTY_ALPHA = "umr_empty_alpha"
         private const val KEY_UMR_TOTAL_WEEKS = "umr_total_weeks"
+
+        // "Set as Wallpaper" branch: live engine on both screens (default)
+        // vs render-to-bitmap → calendar on lock, black on home.
+        private const val KEY_APPLY_MODE = "apply_mode"
 
         private val wallpaperChangeListeners = mutableListOf<() -> Unit>()
 
